@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import time
+import warnings
 from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urljoin
 
 import requests
 import trafilatura
+
+# Suppress rename warning from ddgs package — we know.
+warnings.filterwarnings("ignore", message=".*ddgs.*renamed.*")
 from ddgs import DDGS
 
 
