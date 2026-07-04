@@ -112,12 +112,14 @@ def test_search_fresh_boost():
     import tempfile
     from pathlib import Path
     from datetime import datetime, timedelta
-    db = DB(db_path=Path(tempfile.mkstemp(suffix=".db")[1]))
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db = DB(db_path=Path(path))
     sid = db.add_source("test", "http://test.com/rss")
 
-    # Insert two pages with same content but different fetch dates
-    db.add_page("http://test.com/old", "Old Page", "mycelial networks fungus", sid)
-    db.add_page("http://test.com/new", "New Page", "mycelial networks fungus", sid)
+    # Insert two pages with different content and different fetch dates
+    db.add_page("http://test.com/old", "Old Page", "Old content about mycelial networks", sid)
+    db.add_page("http://test.com/new", "New Page", "New content about mycelial networks", sid)
 
     # Manually set old page to 30 days ago
     old_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")

@@ -188,7 +188,7 @@ def stats(ctx):
 def ask(ctx, query, limit, no_llm, live):
     """Ask a question — search index, pulse if empty, synthesize answer with citations."""
     from sift.pulse import PulseEngine
-    from sift.synthesize import synthesize, synthesize_stream, build_context
+    from sift.synthesize import synthesize_stream, build_context
 
     db = ctx.obj["db"]
 

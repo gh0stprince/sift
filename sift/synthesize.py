@@ -87,6 +87,10 @@ def synthesize(
 ) -> str:
     """Send query + context to an OpenAI-compatible chat endpoint.
 
+    .. deprecated::
+       Use :func:`synthesize_stream` instead. This non-streaming variant
+       is kept only as a fallback for direct module-level usage.
+
     Returns the assistant's response as a string, or an error message
     prefixed with ``[Synthesis error]`` if the call fails.
     """
@@ -143,7 +147,7 @@ def synthesize(
         return f"[Synthesis error] HTTP {e.response.status_code}: {body}"
     except httpx.RequestError as e:
         return f"[Synthesis error] Request failed: {e}"
-    except (KeyError, json.JSONDecodeError) as e:
+    except (KeyError, IndexError, json.JSONDecodeError) as e:
         return f"[Synthesis error] Unexpected response format: {e}"
 
 
