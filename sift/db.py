@@ -100,18 +100,21 @@ class DB:
         self.conn.commit()
         return cursor.lastrowid
 
-    def search(self, query, limit=10):
-        cursor = self.conn.execute(
-            """SELECT p.id, p.url, p.title, p.content, p.source_id, p.fetched_at,
-                      p.pulse_id, p.link_depth,
-                      snippet(pages_fts, 1, '<b>', '</b>', '...', 64) AS excerpt
-               FROM pages_fts
-               JOIN pages p ON pages_fts.rowid = p.id
-               WHERE pages_fts MATCH ?
-               ORDER BY rank
-               LIMIT ?""",
-            (query, limit),
+    def search(self, query, limit=10, fresh=False):
+        order_clause = (
+            "ORDER BY rank / MAX(1.0, julianday('now') - julianday(p.fetched_at))"
+            if fresh
+            else "ORDER BY rank"
         )
+        sql = f"""SELECT p.id, p.url, p.title, p.content, p.source_id, p.fetched_at,
+                         p.pulse_id, p.link_depth,
+                         snippet(pages_fts, 1, '<b>', '</b>', '...', 64) AS excerpt
+                  FROM pages_fts
+                  JOIN pages p ON pages_fts.rowid = p.id
+                  WHERE pages_fts MATCH ?
+                  {order_clause}
+                  LIMIT ?"""
+        cursor = self.conn.execute(sql, (query, limit))
         return [dict(row) for row in cursor.fetchall()]
 
     def get_sources(self):

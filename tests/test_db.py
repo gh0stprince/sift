@@ -106,3 +106,31 @@ def test_stats(db):
     assert stats["pulse_pages"] == 1
     assert stats["feed_pages"] == 3
     assert stats["newest_page"] is not None
+
+
+def test_search_fresh_boost():
+    import tempfile
+    from pathlib import Path
+    from datetime import datetime, timedelta
+    db = DB(db_path=Path(tempfile.mkstemp(suffix=".db")[1]))
+    sid = db.add_source("test", "http://test.com/rss")
+
+    # Insert two pages with same content but different fetch dates
+    db.add_page("http://test.com/old", "Old Page", "mycelial networks fungus", sid)
+    db.add_page("http://test.com/new", "New Page", "mycelial networks fungus", sid)
+
+    # Manually set old page to 30 days ago
+    old_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+    db.conn.execute("UPDATE pages SET fetched_at=? WHERE url=?", (old_date, "http://test.com/old"))
+    db.conn.commit()
+
+    # Fresh search should rank the newer page first
+    fresh_results = db.search("mycelial", fresh=True)
+    assert len(fresh_results) >= 2
+    assert fresh_results[0]["url"] == "http://test.com/new"
+
+    # Non-fresh search (default) should use FTS5 rank order
+    normal_results = db.search("mycelial")
+    assert len(normal_results) >= 2
+
+    db.close()

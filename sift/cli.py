@@ -54,11 +54,12 @@ def main(ctx, db):
 @main.command()
 @click.argument("query")
 @click.option("--limit", default=10, type=int, help="Max results to return")
+@click.option("--fresh", is_flag=True, help="Boost recent results")
 @click.pass_context
-def search(ctx, query, limit):
+def search(ctx, query, limit, fresh):
     """Search indexed content (pages from feeds and pulses)."""
     db = ctx.obj["db"]
-    results = db.search(query, limit=limit)
+    results = db.search(query, limit=limit, fresh=fresh)
 
     if not results:
         click.echo("No results found. Try `sift pulse <query>` to discover content.")
