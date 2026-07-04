@@ -326,16 +326,10 @@ def ask(ctx, query, limit, no_llm, live):
     if final_answer and final_answer.startswith("[Synthesis error]"):
         click.secho(final_answer, fg="red")
         click.echo()
-        click.secho("Showing raw search results instead:\n", dim=True)
-        for r in results[:3]:
-            title = r.get("title") or "(no title)"
-            url = r.get("url") or ""
-            excerpt = r.get("excerpt") or ""
-            click.echo(click.style(title, bold=True))
-            click.echo(click.style(url, fg="blue"))
-            if excerpt:
-                click.echo(f"  {excerpt}")
-            click.echo()
+        _show_raw_results(
+            results[:3],
+            header="Showing raw search results instead:\n",
+        )
         return
 
     # Print sources
