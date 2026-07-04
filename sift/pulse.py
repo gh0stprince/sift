@@ -10,7 +10,7 @@ from urllib.parse import urljoin
 
 import requests
 import trafilatura
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 
 class _LinkExtractor(HTMLParser):
