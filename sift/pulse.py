@@ -197,6 +197,7 @@ class PulseEngine:
             "url": url,
             "title": title,
             "content": content,
+            "html": html,
         }
 
     # ------------------------------------------------------------------
@@ -292,14 +293,10 @@ class PulseEngine:
             for stored in stored_pages[:5]:
                 if pages_stored >= max_pages:
                     break
-                # Re-fetch the HTML to extract links
-                try:
-                    resp = self.session.get(stored["url"], timeout=30)
-                    resp.raise_for_status()
-                except requests.RequestException:
+                # Use stored HTML to extract links (already fetched in Phase 2)
+                html = stored.get("html")
+                if html is None:
                     continue
-
-                html = resp.text
                 links = self._extract_links(html, stored["url"])
                 for link in links[:5]:
                     if pages_stored >= max_pages:

@@ -252,14 +252,11 @@ def ask(ctx, query, limit, no_llm, live):
             return
 
         if no_llm:
-            # Raw mode — show snippets directly
-            click.secho("\n[Live search results — --no-llm]\n", dim=True)
-            for i, s in enumerate(snippet_results):
-                click.echo(click.style(s["title"] or "(no title)", bold=True))
-                click.echo(click.style(s.get("url", ""), fg="blue") if s.get("url") else "")
-                if s.get("body"):
-                    click.echo(f"  {s['body'][:200]}")
-                click.echo()
+            _show_raw_results(
+                snippet_results,
+                header="\n[Live search results — --no-llm]\n",
+                text_key="body",
+            )
             return
 
         context, source_text = build_context_from_snippets(snippet_results)
@@ -278,16 +275,11 @@ def ask(ctx, query, limit, no_llm, live):
         if final_answer and final_answer.startswith("[Synthesis error]"):
             click.secho(final_answer, fg="red")
             click.echo()
-            click.secho("Showing raw search results instead:\n", dim=True)
-            for r in results[:3]:
-                title = r.get("title") or "(no title)"
-                url = r.get("url") or ""
-                excerpt = r.get("excerpt") or ""
-                click.echo(click.style(title, bold=True))
-                click.echo(click.style(url, fg="blue"))
-                if excerpt:
-                    click.echo(f"  {excerpt}")
-                click.echo()
+            _show_raw_results(
+                snippet_results[:3],
+                header="Showing raw search results instead:\n",
+                text_key="body",
+            )
             return
 
         # Print sources
@@ -311,17 +303,10 @@ def ask(ctx, query, limit, no_llm, live):
     click.echo(f"\nFound {len(results)} source(s).")
 
     if no_llm:
-        # Raw mode — show excerpts
-        click.secho("\n[Raw search results — --no-llm]\n", dim=True)
-        for r in results[:limit]:
-            title = r.get("title") or "(no title)"
-            url = r.get("url") or ""
-            excerpt = r.get("excerpt") or ""
-            click.echo(click.style(title, bold=True))
-            click.echo(click.style(url, fg="blue"))
-            if excerpt:
-                click.echo(f"  {excerpt}")
-            click.echo()
+        _show_raw_results(
+            results[:limit],
+            header="\n[Raw search results — --no-llm]\n",
+        )
         return
 
     # LLM synthesis mode
