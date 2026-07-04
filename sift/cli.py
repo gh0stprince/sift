@@ -175,6 +175,37 @@ def stats(ctx):
     click.echo(f"  newest_page:    {s['newest_page'] or 'never'}")
 
 
+def _show_raw_results(items, *, header=None, text_key="excerpt"):
+    """Display raw search/index results — eliminates 4 duplicated blocks.
+
+    Parameters
+    ----------
+    items : list[dict]
+        Each dict must have ``'title'`` and ``'url'``; the text-content
+        field is given by *text_key*.
+    header : str or None
+        Optional header printed with dim styling before the results.
+    text_key : str
+        The dict key holding the textual excerpt or body
+        (``\"excerpt\"`` for index results, ``\"body\"`` for snippet results).
+    """
+    if header:
+        click.secho(header, dim=True)
+    for r in items:
+        title = r.get("title") or "(no title)"
+        url = r.get("url") or ""
+        text = r.get(text_key) or ""
+        click.echo(click.style(title, bold=True))
+        if url:
+            click.echo(click.style(url, fg="blue"))
+        else:
+            click.echo()
+        if text:
+            display = text[:200] if text_key == "body" else text
+            click.echo(f"  {display}")
+        click.echo()
+
+
 @main.command()
 @click.argument("query")
 @click.option("--limit", default=10, type=int, help="Max search results")

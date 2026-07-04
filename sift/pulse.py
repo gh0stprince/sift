@@ -105,7 +105,8 @@ class PulseEngine:
         """
         try:
             results = self.ddgs.text(query, max_results=max_results)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"DDG search failed for '{query}': {e}")
             return []
 
         out: list[dict[str, str]] = []
