@@ -21,7 +21,8 @@ def test_build_context_empty():
     assert sources == ""
 
 
-def test_synthesize_stream_no_key_fallback():
-    tokens = list(synthesize_stream("test", "context", api_key=None))
+def test_synthesize_stream_no_key_fallback(monkeypatch):
+    monkeypatch.setattr("sift.synthesize.DEFAULT_API_KEY", None)
+    tokens = list(synthesize_stream("test", "context"))
     assert len(tokens) > 0
     assert "error" in tokens[0].lower()
