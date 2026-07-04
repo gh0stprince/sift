@@ -283,7 +283,10 @@ def synthesize_stream(
                         break
                     try:
                         data = json.loads(data_str)
-                        delta = data.get("choices", [{}])[0].get("delta", {})
+                        choices = data.get("choices", [])
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta", {})
                         content = delta.get("content", "")
                         if content:
                             yield content

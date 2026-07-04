@@ -19,3 +19,9 @@ def test_build_context_empty():
     context, sources = build_context_from_snippets([])
     assert context == ""
     assert sources == ""
+
+
+def test_synthesize_stream_no_key_fallback():
+    tokens = list(synthesize_stream("test", "context", api_key=None))
+    assert len(tokens) > 0
+    assert "error" in tokens[0].lower()
