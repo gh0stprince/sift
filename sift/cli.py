@@ -181,8 +181,9 @@ def stats(ctx):
     is_flag=True,
     help="Skip LLM synthesis — show raw results only",
 )
+@click.option("--live", is_flag=True, help="Answer from search snippets (faster, no page storage)")
 @click.pass_context
-def ask(ctx, query, limit, no_llm):
+def ask(ctx, query, limit, no_llm, live):
     """Ask a question — search index, pulse if empty, synthesize answer with citations."""
     from sift.pulse import PulseEngine
     from sift.synthesize import synthesize, build_context
@@ -191,6 +192,45 @@ def ask(ctx, query, limit, no_llm):
 
     # First pass: search existing index
     results = db.search(query, limit=limit)
+
+    # --live flag: if no results in index, search live via DDG
+    if live and not results:
+        click.echo("No results in index. Searching live...")
+        from sift.pulse import PulseEngine
+        from sift.synthesize import build_context_from_snippets
+        engine = PulseEngine(ctx.obj["db"])
+        variations = engine._generate_query_variations(query)
+
+        all_urls = {}
+        for v in variations:
+            for r in engine._search_ddg(v, max_results=10):
+                u = r.get("url", "")
+                if not u:
+                    continue
+                if u not in all_urls:
+                    all_urls[u] = {"count": 0, "title": r["title"], "body": r["body"]}
+                all_urls[u]["count"] += 1
+
+        ranked = sorted(all_urls.items(), key=lambda x: -x[1]["count"])
+        snippet_results = [info for url, info in ranked[:limit]]
+
+        if not snippet_results:
+            click.echo("No live results found. Try a broader query.")
+            return
+
+        context, source_text = build_context_from_snippets(snippet_results)
+        click.secho("Synthesizing from live search snippets...", dim=True)
+        answer = synthesize(query, context)
+
+        if answer.startswith("[Synthesis error]"):
+            click.secho(answer, fg="red")
+            return
+
+        click.echo(f"\n{answer}\n")
+        click.secho("Sources (live search):", bold=True)
+        click.echo(source_text)
+        return
+
     if not results:
         click.echo("No results in index. Running a quick pulse...")
         engine = PulseEngine(db)

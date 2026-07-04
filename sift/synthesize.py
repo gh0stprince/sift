@@ -54,6 +54,28 @@ def build_context(results: list[dict[str, Any]], limit: int = 10) -> tuple[str, 
     return context, source_text
 
 
+def build_context_from_snippets(results: list[dict[str, str]], limit: int = 10) -> tuple[str, str]:
+    """Build context from DDG search result snippets (no full page content).
+
+    results is a list of {"url", "title", "body"} dicts as returned
+    by PulseEngine._search_ddg(). Produces shorter context than
+    build_context() because there's no extracted page text.
+    """
+    parts = []
+    sources = []
+    for i, r in enumerate(results[:limit], 1):
+        title = r.get("title") or "(no title)"
+        url = r.get("url") or ""
+        body = r.get("body") or ""
+        parts.append(f"[{i}] {title}\nURL: {url}\n\n{body}")
+        sources.append(f"  [{i}] {title}")
+        sources.append(f"       {url}")
+
+    context = "\n\n---\n\n".join(parts)
+    source_text = "\n".join(sources)
+    return context, source_text
+
+
 def synthesize(
     query: str,
     context: str,
