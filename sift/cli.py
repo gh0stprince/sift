@@ -177,14 +177,15 @@ def stats(ctx):
 @click.argument("query")
 @click.option("--limit", default=10, type=int, help="Max search results")
 @click.option(
-    "--model",
-    default="deepseek/Llama-3.1-8B",
-    help="LLM model for answer synthesis",
+    "--no-llm",
+    is_flag=True,
+    help="Skip LLM synthesis — show raw results only",
 )
 @click.pass_context
-def ask(ctx, query, limit, model):
-    """Ask a question — search index, pulse if empty, show sources."""
+def ask(ctx, query, limit, no_llm):
+    """Ask a question — search index, pulse if empty, synthesize answer with citations."""
     from sift.pulse import PulseEngine
+    from sift.synthesize import synthesize, build_context
 
     db = ctx.obj["db"]
 
@@ -203,26 +204,55 @@ def ask(ctx, query, limit, model):
         )
         return
 
-    # Print numbered sources
-    click.echo(f"\nFound {len(results)} source(s) for your query:\n")
-    for i, r in enumerate(results[:limit], 1):
-        title = r.get("title") or "(no title)"
-        url = r.get("url") or ""
-        click.echo(f"  [{i}] {click.style(title, bold=True)}")
-        click.echo(f"       {click.style(url, fg='blue')}")
+    click.echo(f"\nFound {len(results)} source(s).")
 
-    # Placeholder — no LLM synthesis wired yet
-    click.echo()
-    click.secho(
-        "[Answer synthesis not yet wired — showing raw search results]",
-        dim=True,
-    )
-    click.echo()
-    for r in results[:3]:
-        excerpt = r.get("excerpt") or ""
-        if excerpt:
-            click.echo(f"  {excerpt}")
+    if no_llm:
+        # Raw mode — show excerpts
+        click.secho("\n[Raw search results — --no-llm]\n", dim=True)
+        for r in results[:limit]:
+            title = r.get("title") or "(no title)"
+            url = r.get("url") or ""
+            excerpt = r.get("excerpt") or ""
+            click.echo(click.style(title, bold=True))
+            click.echo(click.style(url, fg="blue"))
+            if excerpt:
+                click.echo(f"  {excerpt}")
             click.echo()
+        return
+
+    # LLM synthesis mode
+    context, source_text = build_context(results, limit=limit)
+
+    click.echo()
+    click.secho("🤔 Synthesizing answer...", dim=True)
+
+    answer = synthesize(query, context)
+
+    click.echo()
+
+    # Check if synthesis returned an error
+    if answer.startswith("[Synthesis error]"):
+        click.secho(answer, fg="red")
+        click.echo()
+        click.secho("Showing raw search results instead:\n", dim=True)
+        for r in results[:3]:
+            title = r.get("title") or "(no title)"
+            url = r.get("url") or ""
+            excerpt = r.get("excerpt") or ""
+            click.echo(click.style(title, bold=True))
+            click.echo(click.style(url, fg="blue"))
+            if excerpt:
+                click.echo(f"  {excerpt}")
+            click.echo()
+        return
+
+    # Print answer
+    click.echo(answer)
+    click.echo()
+
+    # Print sources
+    click.secho("Sources:", bold=True)
+    click.echo(source_text)
 
 
 if __name__ == "__main__":
