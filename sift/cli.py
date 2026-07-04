@@ -218,6 +218,17 @@ def ask(ctx, query, limit, no_llm, live):
             click.echo("No live results found. Try a broader query.")
             return
 
+        if no_llm:
+            # Raw mode — show snippets directly
+            click.secho("\n[Live search results — --no-llm]\n", dim=True)
+            for i, s in enumerate(snippet_results):
+                click.echo(click.style(s["title"] or "(no title)", bold=True))
+                click.echo(click.style(s.get("url", ""), fg="blue") if s.get("url") else "")
+                if s.get("body"):
+                    click.echo(f"  {s['body'][:200]}")
+                click.echo()
+            return
+
         context, source_text = build_context_from_snippets(snippet_results)
         click.secho("Synthesizing from live search snippets...", dim=True)
         answer = synthesize(query, context)
