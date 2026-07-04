@@ -326,5 +326,27 @@ def ask(ctx, query, limit, no_llm, live):
     click.echo(source_text)
 
 
+@main.command()
+@click.argument("url")
+@click.option("--max-pages", default=200, type=int, help="Max pages to crawl")
+@click.pass_context
+def crawl(ctx, url, max_pages):
+    """Crawl a domain — discover pages via sitemap + internal links."""
+    from sift.crawler import DomainCrawler
+
+    db = ctx.obj["db"]
+    crawler_obj = DomainCrawler(db)
+
+    click.echo(f"Spider crawling {url}...")
+    click.echo(f"   Max pages: {max_pages}")
+
+    stats = crawler_obj.run(url, max_pages=max_pages)
+
+    click.echo(f"\nCrawl complete")
+    click.echo(f"   URLs discovered: {stats['urls_discovered']}")
+    click.echo(f"   Pages stored:    {stats['pages_fetched']}")
+    click.echo(f"   Errors:          {stats['errors']}")
+
+
 if __name__ == "__main__":
     main()
