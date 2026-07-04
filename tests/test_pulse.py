@@ -41,12 +41,25 @@ def test_real_pulse() -> None:
     tmp.close()
     db = DB(tmp.name)
     try:
-        engine = PulseEngine(db, user_agent="Sift-Test/0.1.0")
-        result = engine.run("mycelial networks", depth=1, max_pages=5)
+        # DDG aggressively rate-limits; retry up to 3 times with backoff
+        import time as _time
+
+        result = None
+        for attempt in range(3):
+            engine = PulseEngine(db, user_agent="Sift-Test/0.1.0")
+            result = engine.run("mycelial networks", depth=1, max_pages=5)
+            if result["pages_found"] > 0:
+                break
+            if attempt < 2:
+                _time.sleep(5 * (attempt + 1))
 
         # Verify pulse record
+        assert result is not None
         assert result["pulse_id"] is not None
-        assert result["pages_found"] > 0, "Expected at least one page found"
+        assert result["pages_found"] > 0, (
+            "Expected at least one page found "
+            "(DDG rate limiting may cause transient failures)"
+        )
         assert result["total_depth"] == 1
 
         # Verify pages exist in DB with matching pulse_id
