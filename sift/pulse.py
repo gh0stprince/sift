@@ -17,6 +17,8 @@ import trafilatura
 warnings.filterwarnings("ignore", message=".*ddgs.*renamed.*")
 from ddgs import DDGS
 
+logger = logging.getLogger(__name__)
+
 
 class _LinkExtractor(HTMLParser):
     """HTML parser that collects all href attributes from <a> tags."""

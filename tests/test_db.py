@@ -135,4 +135,9 @@ def test_search_fresh_boost():
     normal_results = db.search("mycelial")
     assert len(normal_results) >= 2
 
+    # Fresh boost should produce different ordering than non-fresh
+    fresh_urls = [r["url"] for r in fresh_results]
+    normal_urls = [r["url"] for r in normal_results]
+    assert fresh_urls != normal_urls, "Fresh boost should change ordering"
+
     db.close()

@@ -102,7 +102,7 @@ class DB:
 
     def search(self, query, limit=10, fresh=False):
         order_clause = (
-            "ORDER BY rank / MAX(1.0, julianday('now') - julianday(p.fetched_at))"
+            "ORDER BY rank / MAX(1.0, julianday('now') - COALESCE(julianday(p.fetched_at), julianday('now')))"
             if fresh
             else "ORDER BY rank"
         )

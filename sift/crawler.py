@@ -194,13 +194,15 @@ class DomainCrawler:
             links = pulse._extract_links(html, current)
 
             for link in links:
-                if link in visited or link in frontier:
+                # Strip URL fragments to avoid duplicate entries
+                clean = link.split("#")[0]
+                if clean in visited or clean in frontier:
                     continue
                 # Keep only internal links (same root)
-                if link.startswith(root_norm) or link.startswith(
+                if clean.startswith(root_norm) or clean.startswith(
                     root_norm.replace("http://", "https://")
                 ):
-                    frontier.append(link)
+                    frontier.append(clean)
 
             if len(discovered) >= max_pages:
                 break
