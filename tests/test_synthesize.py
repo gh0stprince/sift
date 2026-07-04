@@ -1,5 +1,5 @@
 """Tests for answer synthesis."""
-from sift.synthesize import build_context_from_snippets
+from sift.synthesize import build_context_from_snippets, synthesize_stream
 
 
 def test_build_context_from_snippets():

@@ -2,7 +2,7 @@
 
 import json
 import os
-from typing import Any
+from typing import Any, Generator
 
 import httpx
 
@@ -76,6 +76,80 @@ def build_context_from_snippets(results: list[dict[str, str]], limit: int = 10) 
     return context, source_text
 
 
+def synthesize_stream(
+    query: str,
+    context: str,
+    api_url: str = DEFAULT_API_URL,
+    model: str = DEFAULT_MODEL,
+    api_key: str | None = DEFAULT_API_KEY,
+) -> Generator[str, None, None]:
+    """Stream a synthesis from an OpenAI-compatible chat endpoint.
+
+    Yields response tokens as they arrive, or a single error message
+    prefixed with ``[Synthesis error]`` if the call fails.
+    """
+    if not api_key:
+        yield "[Synthesis error] No API key configured for LLM synthesis.\nSet OPENCODE_GO_API_KEY or configure auth.json."
+        return
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    system_prompt = (
+        "You are a research assistant. Answer the user's question based ONLY "
+        "on the provided context. Cite sources inline using [1], [2], etc. "
+        "If the context doesn't contain enough information, say so clearly. "
+        "Be concise — aim for 2-4 paragraphs. Always end with a clear summary."
+    )
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": (
+                    f"Context:\n{context}\n\n"
+                    f"Question: {query}\n\n"
+                    f"Answer based only on the context above. "
+                    f"Cite sources inline with [1], [2], etc."
+                ),
+            },
+        ],
+        "stream": True,
+        "temperature": 0.3,
+        "max_tokens": 2048,
+    }
+
+    try:
+        with httpx.stream("POST", api_url, json=payload, headers=headers, timeout=120) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if not line or line.startswith(":"):
+                    continue
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        continue
+    except httpx.HTTPStatusError as e:
+        body = e.response.text[:500]
+        yield f"[Synthesis error] HTTP {e.response.status_code}: {body}"
+    except httpx.RequestError as e:
+        yield f"[Synthesis error] Request failed: {e}"
+    except (KeyError, json.JSONDecodeError) as e:
+        yield f"[Synthesis error] Unexpected response format: {e}"
+
+
 def synthesize(
     query: str,
     context: str,
@@ -143,3 +217,79 @@ def synthesize(
         return f"[Synthesis error] Request failed: {e}"
     except (KeyError, json.JSONDecodeError) as e:
         return f"[Synthesis error] Unexpected response format: {e}"
+
+
+def synthesize_stream(
+    query: str,
+    context: str,
+    api_url: str | None = None,
+    model: str | None = None,
+    api_key: str | None = None,
+) -> Generator[str, None, None]:
+    """Stream synthesis tokens as they arrive via SSE.
+
+    Yields content tokens one at a time. Falls back to yielding the
+    single full response if streaming is not supported.
+    """
+    url = api_url or DEFAULT_API_URL
+    mdl = model or DEFAULT_MODEL
+    key = api_key or DEFAULT_API_KEY
+
+    if not key:
+        yield "[Synthesis error] No API key configured."
+        return
+
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
+
+    system_prompt = (
+        "You are a research assistant. Answer the user's question based ONLY "
+        "on the provided context. Cite sources inline using [1], [2], etc. "
+        "If the context doesn't contain enough information, say so clearly. "
+        "Be concise — aim for 2-4 paragraphs. Always end with a clear summary."
+    )
+
+    payload = {
+        "model": mdl,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": (
+                    f"Context:\n{context}\n\n"
+                    f"Question: {query}\n\n"
+                    f"Answer based only on the context above. "
+                    f"Cite sources inline with [1], [2], etc."
+                ),
+            },
+        ],
+        "temperature": 0.3,
+        "max_tokens": 2048,
+        "stream": True,
+    }
+
+    try:
+        with httpx.stream("POST", url, json=payload, headers=headers, timeout=120) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if not line or line.startswith(":"):
+                    continue
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                        delta = data.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        continue
+    except httpx.HTTPStatusError as e:
+        yield f"\n[Synthesis error] HTTP {e.response.status_code}"
+    except httpx.RequestError as e:
+        yield f"\n[Synthesis error] Request failed: {e}"

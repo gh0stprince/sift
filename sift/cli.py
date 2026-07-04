@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
+import sys
 
 DEFAULT_FEEDS = [
     ("Lobsters", "https://lobste.rs/rss"),
@@ -186,7 +187,7 @@ def stats(ctx):
 def ask(ctx, query, limit, no_llm, live):
     """Ask a question — search index, pulse if empty, synthesize answer with citations."""
     from sift.pulse import PulseEngine
-    from sift.synthesize import synthesize, build_context
+    from sift.synthesize import synthesize, synthesize_stream, build_context
 
     db = ctx.obj["db"]
 
@@ -230,15 +231,35 @@ def ask(ctx, query, limit, no_llm, live):
             return
 
         context, source_text = build_context_from_snippets(snippet_results)
-        click.secho("Synthesizing from live search snippets...", dim=True)
-        answer = synthesize(query, context)
 
-        if answer.startswith("[Synthesis error]"):
-            click.secho(answer, fg="red")
+        click.secho("🤔 Synthesizing answer...\n", dim=True)
+
+        collected = []
+        for token in synthesize_stream(query, context):
+            click.echo(token, nl=False)
+            collected.append(token)
+            sys.stdout.flush()
+
+        click.echo()
+        final_answer = "".join(collected).strip()
+
+        if final_answer and final_answer.startswith("[Synthesis error]"):
+            click.secho(final_answer, fg="red")
+            click.echo()
+            click.secho("Showing raw search results instead:\n", dim=True)
+            for r in results[:3]:
+                title = r.get("title") or "(no title)"
+                url = r.get("url") or ""
+                excerpt = r.get("excerpt") or ""
+                click.echo(click.style(title, bold=True))
+                click.echo(click.style(url, fg="blue"))
+                if excerpt:
+                    click.echo(f"  {excerpt}")
+                click.echo()
             return
 
-        click.echo(f"\n{answer}\n")
-        click.secho("Sources (live search):", bold=True)
+        # Print sources
+        click.secho("\nSources:", bold=True)
         click.echo(source_text)
         return
 
@@ -274,16 +295,19 @@ def ask(ctx, query, limit, no_llm, live):
     # LLM synthesis mode
     context, source_text = build_context(results, limit=limit)
 
+    click.secho("🤔 Synthesizing answer...\n", dim=True)
+
+    collected = []
+    for token in synthesize_stream(query, context):
+        click.echo(token, nl=False)
+        collected.append(token)
+        sys.stdout.flush()
+
     click.echo()
-    click.secho("🤔 Synthesizing answer...", dim=True)
+    final_answer = "".join(collected).strip()
 
-    answer = synthesize(query, context)
-
-    click.echo()
-
-    # Check if synthesis returned an error
-    if answer.startswith("[Synthesis error]"):
-        click.secho(answer, fg="red")
+    if final_answer and final_answer.startswith("[Synthesis error]"):
+        click.secho(final_answer, fg="red")
         click.echo()
         click.secho("Showing raw search results instead:\n", dim=True)
         for r in results[:3]:
@@ -297,12 +321,8 @@ def ask(ctx, query, limit, no_llm, live):
             click.echo()
         return
 
-    # Print answer
-    click.echo(answer)
-    click.echo()
-
     # Print sources
-    click.secho("Sources:", bold=True)
+    click.secho("\nSources:", bold=True)
     click.echo(source_text)
 
 
