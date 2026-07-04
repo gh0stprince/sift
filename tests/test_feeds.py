@@ -22,20 +22,35 @@ from sift.feeds import FeedFetcher
 
 class FakeDB:
     """Minimal in-memory DB stub that matches the interface ``FeedFetcher``
-    expects (``get_sources``, ``add_source``, ``page_exists``, ``add_page``)."""
+    expects (``get_sources``, ``add_source``, ``conn``, ``add_page``)."""
 
     def __init__(self) -> None:
         self.sources: list[dict[str, Any]] = []
         self.pages: dict[str, dict[str, str]] = {}
 
+        # Provide a simple ``conn`` object so that
+        # ``self.db.conn.execute(...)`` works inside ``FeedFetcher.run_all``.
+        class _Conn:
+            @staticmethod
+            def execute(sql: str, params: tuple = ()) -> _Cursor:
+                return _Cursor(sql, params)
+
+        class _Cursor:
+            def __init__(self, sql: str, params: tuple) -> None:
+                self._sql = sql
+                self._params = params
+
+            @staticmethod
+            def fetchone():  # type: ignore[no-untyped-def]
+                return None  # always "URL not found"
+
+        self.conn = _Conn()
+
     def get_sources(self) -> list[dict[str, Any]]:
         return self.sources
 
-    def add_source(self, name: str, url: str, kind: str = "feed") -> None:
-        self.sources.append({"name": name, "url": url, "kind": kind})
-
-    def page_exists(self, url: str) -> bool:
-        return url in self.pages
+    def add_source(self, name: str, feed_url: str, kind: str = "feed") -> None:
+        self.sources.append({"name": name, "feed_url": feed_url, "kind": kind})
 
     def add_page(self, url: str, title: str, content: str) -> None:
         self.pages[url] = {"url": url, "title": title, "content": content}

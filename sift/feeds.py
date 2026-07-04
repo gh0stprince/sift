@@ -47,7 +47,7 @@ class FeedFetcher:
 
     def add_feed(self, name: str, url: str) -> None:
         """Register a new feed source."""
-        self.db.add_source(name=name, url=url, kind="feed")
+        self.db.add_source(name=name, feed_url=url, kind="feed")
 
     # ------------------------------------------------------------------
     # Feed fetching and parsing
@@ -199,7 +199,7 @@ class FeedFetcher:
         }
 
         for feed in feeds:
-            feed_url = feed.get("url", "")
+            feed_url = feed.get("feed_url") or feed.get("url") or ""
             if not feed_url:
                 continue
 
@@ -216,9 +216,12 @@ class FeedFetcher:
                 if not entry_url:
                     continue
 
-                # Skip already-known URLs
+                # Skip already-known URLs by querying the pages table
                 try:
-                    if self.db.page_exists(entry_url):
+                    cur = self.db.conn.execute(
+                        "SELECT 1 FROM pages WHERE url = ?", (entry_url,)
+                    )
+                    if cur.fetchone() is not None:
                         stats["pages_skipped"] += 1
                         continue
                 except Exception:
