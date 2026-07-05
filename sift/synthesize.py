@@ -1,6 +1,5 @@
 """Answer synthesis — LLM with inline citations from search results."""
 
-import json
 import os
 import re
 from typing import Any, Generator
@@ -11,20 +10,9 @@ import httpx
 # Used when no API key or custom endpoint is configured.
 DEFAULT_API_URL = "https://opencode.ai/zen/go/v1/chat/completions"
 
-# API key resolution order: explicit arg > env var > auth.json lookup
-DEFAULT_API_KEY = None
-_auth_path = os.path.expanduser("~/AppData/Local/hermes/auth.json")
-if os.path.exists(_auth_path):
-    try:
-        with open(_auth_path) as f:
-            auth = json.load(f)
-        pool = auth.get("credential_pool", {}).get("opencode-go", [])
-        for cred in pool:
-            if cred.get("auth_type") == "api_key" and cred.get("access_token"):
-                DEFAULT_API_KEY = cred["access_token"]
-                break
-    except Exception:
-        pass
+# API key resolution order: explicit arg > env var > None
+# For local dev, set OPENCODE_GO_API_KEY or AUXILIARY_APPROVAL_API_KEY
+DEFAULT_API_KEY = os.environ.get("OPENCODE_GO_API_KEY") or os.environ.get("AUXILIARY_APPROVAL_API_KEY")
 
 
 # Model: use the active model from provider config
@@ -141,10 +129,7 @@ def synthesize(
         raw = content or reasoning or ""
         if not raw:
             return "[Synthesis error] Empty response from model."
-
-        # Strip thinking preamble from the answer
-        from sift.wiki import clean_answer
-        return clean_answer(raw.strip())
+        return raw.strip()
     except httpx.HTTPStatusError as e:
         body = e.response.text[:500]
         return f"[Synthesis error] HTTP {e.response.status_code}: {body}"

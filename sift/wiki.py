@@ -33,7 +33,7 @@ def clean_answer(answer: str) -> str:
     # Meta patterns — sentences that are clearly thinking, not answering
     def is_meta(text):
         return bool(re.match(
-            r"^(We are |We need |Let me |I need to |First,|Thinking|The user |"
+            r"^(We are |We need |Let me |I need to |First[ ,]|Thinking|The user |"
             r"Based on |Looking at|Analyzing |The provided |"
             r"Okay,|So, |Hmm|Actually|Wait |The question|"
             r"The context|Given |Now,|Here |I'll |"
@@ -91,9 +91,9 @@ def write_raw_source(
     today = date.today().isoformat()
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    # Clean the synthesis — strip thinking preamble
-    clean = clean_answer(synthesis)
-
+    # Build body — use the full synthesis, not a cleaned version
+    body = synthesis
+    
     # Build frontmatter
     tag_lines = "  - topic:research"
 
@@ -116,8 +116,6 @@ ingested: {today}
 
     frontmatter += "---"
 
-    # Build body
-    body = clean
     if sources:
         body += "\n\n## Sources\n\n"
         for i, s in enumerate(sources, 1):

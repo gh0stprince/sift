@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import re
 
 DB_DIR = os.path.expanduser("~/.sift")
 DB_PATH = os.path.join(DB_DIR, "sift.db")
@@ -101,6 +102,12 @@ class DB:
         return cursor.lastrowid
 
     def search(self, query, limit=10, fresh=False):
+        # Sanitize FTS5 query: escape special chars that cause syntax errors
+        # Hyphens, colons, brackets are FTS5 operators — quote the whole query as a phrase
+        # if it contains special characters, otherwise use as-is for prefix matching
+        if re.search(r'[-:()*"\'\[\]\\]', query):
+            query = f'"{query}"'
+        
         order_clause = (
             "ORDER BY rank / MAX(1.0, julianday('now') - COALESCE(julianday(p.fetched_at), julianday('now')))"
             if fresh

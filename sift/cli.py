@@ -228,9 +228,10 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
     # First pass: search existing index
     results = db.search(query, limit=limit)
 
-    # --live flag: if no results in index, search live via DDG
-    if live and not results:
-        click.echo("No results in index. Searching live...")
+    # --live flag: always search live, skip index
+    if live:
+        if not results:
+            click.echo("No results in index. Searching live...")
         from sift.pulse import PulseEngine
         from sift.synthesize import build_context_from_snippets
         engine = PulseEngine(ctx.obj["db"])
@@ -263,17 +264,13 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
 
         context, source_text = build_context_from_snippets(snippet_results)
 
-        click.secho("🤔 Synthesizing answer...\n", dim=True)
+        click.secho("˶ᵔ ᵕ ᵔ˶ Thinking...\n", dim=True)
 
         collected = []
         for token in synthesize_stream(query, context):
             collected.append(token)
 
         final_answer = "".join(collected).strip()
-
-        # Clean thinking preamble from the answer
-        from sift.wiki import clean_answer
-        final_answer = clean_answer(final_answer)
 
         if final_answer and final_answer.startswith("[Synthesis error]"):
             click.secho(final_answer, fg="red")
@@ -285,7 +282,7 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
             )
             return
 
-        # Print the clean answer
+        # Print the answer
         click.echo("\n" + final_answer)
 
         # Print sources
@@ -294,12 +291,16 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
 
         # --wiki: save to raw/queries/
         if wiki:
-            from sift.wiki import write_raw_source, slugify, extract_sources_from_answer
+            from sift.wiki import write_raw_source, slugify
             slug = wiki_slug or slugify(query)
             title = wiki_slug.replace("-", " ").title() if wiki_slug else query[:60]
-            src_urls = extract_sources_from_answer(final_answer) or [
-                r.get("url", "") for r in snippet_results if r.get("url")
-            ]
+            # Extract source URLs from the source list
+            src_urls = []
+            for line in source_text.split("\n"):
+                if "http" in line:
+                    for part in line.split():
+                        if part.startswith("http"):
+                            src_urls.append(part.rstrip(","))
             path = write_raw_source(title, slug, query, final_answer, src_urls)
             click.secho(f"\n[Wiki: saved to {path}]", dim=True)
         return
@@ -329,17 +330,13 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
     # LLM synthesis mode
     context, source_text = build_context(results, limit=limit)
 
-    click.secho("🤔 Synthesizing answer...\n", dim=True)
+    click.secho("˶ᵔ ᵕ ᵔ˶ Thinking...\n", dim=True)
 
     collected = []
     for token in synthesize_stream(query, context):
         collected.append(token)
 
     final_answer = "".join(collected).strip()
-
-    # Clean thinking preamble from the answer
-    from sift.wiki import clean_answer
-    final_answer = clean_answer(final_answer)
 
     if final_answer and final_answer.startswith("[Synthesis error]"):
         click.secho(final_answer, fg="red")
@@ -350,7 +347,7 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
         )
         return
 
-    # Print the clean answer
+    # Print the answer
     click.echo(final_answer)
 
     # Print sources
@@ -359,12 +356,15 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
 
     # --wiki: save to raw/queries/
     if wiki:
-        from sift.wiki import write_raw_source, slugify, extract_sources_from_answer
+        from sift.wiki import write_raw_source, slugify
         slug = wiki_slug or slugify(query)
         title = wiki_slug.replace("-", " ").title() if wiki_slug else query[:60]
-        src_urls = extract_sources_from_answer(final_answer) or [
-            r.get("url", "") for r in results if r.get("url")
-        ]
+        src_urls = []
+        for line in source_text.split("\n"):
+            if "http" in line:
+                for part in line.split():
+                    if part.startswith("http"):
+                        src_urls.append(part.rstrip(","))
         path = write_raw_source(title, slug, query, final_answer, src_urls)
         click.secho(f"\n[Wiki: saved to {path}]", dim=True)
 

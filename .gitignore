@@ -15,3 +15,7 @@ venv/
 .idea/
 *.swp
 *.swo
+
+# Sift local data
+.sift/
+~/.sift/
