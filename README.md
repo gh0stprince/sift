@@ -10,7 +10,7 @@ real sources.
 - **Pulse** — Recursive research: discover content by following links from search results
 - **Feeds** — Ingest and index RSS/Atom feeds (Lobsters, Hacker News, ArXiv, etc.)
 - **Ask** — Get AI-synthesized answers with inline citations from search results
-- **Wiki** — Save research outputs directly to your LLM wiki
+- **Wiki** — Save research outputs directly to your LLM wiki (planned, currently giving garbage output)
 
 ## Installation
 
