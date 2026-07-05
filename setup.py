@@ -5,6 +5,7 @@ setup(
     version="0.1.0",
     packages=find_packages(),
     include_package_data=True,
+    license="Non-Commercial Use License (See LICENSE file)",
     install_requires=[
         "duckduckgo_search>=6.2.0",
         "trafilatura>=2.0.0",
