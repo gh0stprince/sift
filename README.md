@@ -89,7 +89,3 @@ Run tests:
 ```bash
 pytest
 ```
-
-## License
-
-MIT
