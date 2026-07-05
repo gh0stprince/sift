@@ -215,8 +215,10 @@ def _show_raw_results(items, *, header=None, text_key="excerpt"):
     help="Skip LLM synthesis — show raw results only",
 )
 @click.option("--live", is_flag=True, help="Answer from search snippets (faster, no page storage)")
+@click.option("--wiki", "-w", is_flag=True, help="Save answer to ~/llm-wiki/raw/queries/")
+@click.option("--wiki-slug", default=None, type=str, help="Filename slug for wiki output (default: auto from query)")
 @click.pass_context
-def ask(ctx, query, limit, no_llm, live):
+def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
     """Ask a question — search index, pulse if empty, synthesize answer with citations."""
     from sift.pulse import PulseEngine
     from sift.synthesize import synthesize_stream, build_context
@@ -265,12 +267,13 @@ def ask(ctx, query, limit, no_llm, live):
 
         collected = []
         for token in synthesize_stream(query, context):
-            click.echo(token, nl=False)
             collected.append(token)
-            sys.stdout.flush()
 
-        click.echo()
         final_answer = "".join(collected).strip()
+
+        # Clean thinking preamble from the answer
+        from sift.wiki import clean_answer
+        final_answer = clean_answer(final_answer)
 
         if final_answer and final_answer.startswith("[Synthesis error]"):
             click.secho(final_answer, fg="red")
@@ -282,9 +285,23 @@ def ask(ctx, query, limit, no_llm, live):
             )
             return
 
+        # Print the clean answer
+        click.echo("\n" + final_answer)
+
         # Print sources
         click.secho("\nSources:", bold=True)
         click.echo(source_text)
+
+        # --wiki: save to raw/queries/
+        if wiki:
+            from sift.wiki import write_raw_source, slugify, extract_sources_from_answer
+            slug = wiki_slug or slugify(query)
+            title = wiki_slug.replace("-", " ").title() if wiki_slug else query[:60]
+            src_urls = extract_sources_from_answer(final_answer) or [
+                r.get("url", "") for r in snippet_results if r.get("url")
+            ]
+            path = write_raw_source(title, slug, query, final_answer, src_urls)
+            click.secho(f"\n[Wiki: saved to {path}]", dim=True)
         return
 
     if not results:
@@ -316,12 +333,13 @@ def ask(ctx, query, limit, no_llm, live):
 
     collected = []
     for token in synthesize_stream(query, context):
-        click.echo(token, nl=False)
         collected.append(token)
-        sys.stdout.flush()
 
-    click.echo()
     final_answer = "".join(collected).strip()
+
+    # Clean thinking preamble from the answer
+    from sift.wiki import clean_answer
+    final_answer = clean_answer(final_answer)
 
     if final_answer and final_answer.startswith("[Synthesis error]"):
         click.secho(final_answer, fg="red")
@@ -332,9 +350,23 @@ def ask(ctx, query, limit, no_llm, live):
         )
         return
 
+    # Print the clean answer
+    click.echo(final_answer)
+
     # Print sources
     click.secho("\nSources:", bold=True)
     click.echo(source_text)
+
+    # --wiki: save to raw/queries/
+    if wiki:
+        from sift.wiki import write_raw_source, slugify, extract_sources_from_answer
+        slug = wiki_slug or slugify(query)
+        title = wiki_slug.replace("-", " ").title() if wiki_slug else query[:60]
+        src_urls = extract_sources_from_answer(final_answer) or [
+            r.get("url", "") for r in results if r.get("url")
+        ]
+        path = write_raw_source(title, slug, query, final_answer, src_urls)
+        click.secho(f"\n[Wiki: saved to {path}]", dim=True)
 
 
 @main.command()

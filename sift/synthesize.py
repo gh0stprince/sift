@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from typing import Any, Generator
 
 import httpx
@@ -107,6 +108,8 @@ def synthesize(
         "on the provided context. Cite sources inline using [1], [2], etc. "
         "If the context doesn't contain enough information, say so clearly. "
         "Be concise — aim for 2-4 paragraphs. Always end with a clear summary."
+        " Do NOT include any thinking, reasoning, analysis, or internal monologue."
+        " Just provide the answer directly."
     )
 
     payload = {
@@ -135,13 +138,13 @@ def synthesize(
         choice = data["choices"][0]["message"]
         content = choice.get("content", "")
         reasoning = choice.get("reasoning_content", "")
-        if not content and reasoning:
-            # Some models only return reasoning_content when they cut off;
-            # fall back to reasoning as the visible output
-            content = reasoning
-        if not content:
+        raw = content or reasoning or ""
+        if not raw:
             return "[Synthesis error] Empty response from model."
-        return content.strip()
+
+        # Strip thinking preamble from the answer
+        from sift.wiki import clean_answer
+        return clean_answer(raw.strip())
     except httpx.HTTPStatusError as e:
         body = e.response.text[:500]
         return f"[Synthesis error] HTTP {e.response.status_code}: {body}"
@@ -160,8 +163,12 @@ def synthesize_stream(
 ) -> Generator[str, None, None]:
     """Stream synthesis tokens as they arrive via SSE.
 
-    Yields content tokens one at a time. Falls back to yielding the
-    single full response if streaming is not supported.
+    Note: DeepSeek models emit all content as ``reasoning_content``
+    with empty ``content`` fields. We yield everything as-is and let
+    the caller clean the answer with ``sift.wiki.clean_answer()``.
+
+    Falls back to yielding the single full response if streaming is
+    not supported.
     """
     url = api_url or DEFAULT_API_URL
     mdl = model or DEFAULT_MODEL
@@ -182,6 +189,8 @@ def synthesize_stream(
         "on the provided context. Cite sources inline using [1], [2], etc. "
         "If the context doesn't contain enough information, say so clearly. "
         "Be concise — aim for 2-4 paragraphs. Always end with a clear summary."
+        " Do NOT include any thinking, reasoning, analysis, or internal monologue."
+        " Just provide the answer directly."
     )
 
     payload = {
@@ -204,7 +213,9 @@ def synthesize_stream(
     }
 
     try:
-        with httpx.stream("POST", url, json=payload, headers=headers, timeout=120) as resp:
+        with httpx.stream(
+            "POST", url, json=payload, headers=headers, timeout=120
+        ) as resp:
             resp.raise_for_status()
             for line in resp.iter_lines():
                 if not line or line.startswith(":"):
@@ -219,9 +230,11 @@ def synthesize_stream(
                         if not choices:
                             continue
                         delta = choices[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
+                        token = delta.get("content", "") or delta.get(
+                            "reasoning_content", ""
+                        )
+                        if token:
+                            yield token
                     except json.JSONDecodeError:
                         continue
     except httpx.HTTPStatusError as e:
