@@ -107,7 +107,7 @@ class DB:
         # if it contains special characters, otherwise use as-is for prefix matching
         if re.search(r'[-:()*"\'\[\]\\]', query):
             query = f'"{query}"'
-        
+
         order_clause = (
             "ORDER BY rank / MAX(1.0, julianday('now') - COALESCE(julianday(p.fetched_at), julianday('now')))"
             if fresh

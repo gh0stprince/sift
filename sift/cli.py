@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
-import sys
 
 DEFAULT_FEEDS = [
     ("Lobsters", "https://lobste.rs/rss"),
@@ -216,7 +215,8 @@ def _show_raw_results(items, *, header=None, text_key="excerpt"):
 )
 @click.option("--live", is_flag=True, help="Answer from search snippets (faster, no page storage)")
 @click.option("--wiki", "-w", is_flag=True, help="Save answer to ~/llm-wiki/raw/queries/")
-@click.option("--wiki-slug", default=None, type=str, help="Filename slug for wiki output (default: auto from query)")
+@click.option("--wiki-slug", default=None, type=str,
+              help="Filename slug for wiki output (default: auto from query)")
 @click.pass_context
 def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
     """Ask a question — search index, pulse if empty, synthesize answer with citations."""
@@ -392,4 +392,4 @@ def crawl(ctx, url, max_pages):
 
 
 if __name__ == "__main__":
-    main()
+    main()  # pylint: disable=no-value-for-parameter

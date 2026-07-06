@@ -279,7 +279,7 @@ class PulseEngine:
         pages_stored = 0
         stored_pages: list[dict[str, Any]] = []
 
-        for url, info in ranked[:15]:
+        for url, _info in ranked[:15]:
             if pages_stored >= max_pages:
                 break
             result = self._fetch_and_store(url, pulse_id, link_depth=0)
