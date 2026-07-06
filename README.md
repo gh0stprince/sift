@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="Sift banner" width="800">
+</p>
+
 # Sift
 
 AI-powered web research tool. Sift searches the web, extracts content from
