@@ -7,18 +7,20 @@ def test_build_context_from_snippets():
         {"url": "https://a.com", "title": "Page A", "body": "Content about A"},
         {"url": "https://b.com", "title": "Page B", "body": "Content about B"},
     ]
-    context, sources = build_context_from_snippets(snippets)
+    context, source_text = build_context_from_snippets(snippets)
     assert "[1]" in context
     assert "Page A" in context
-    assert "https://a.com" in sources
+    # source_text is formatted string with URLs; verify exact URLs present
+    assert source_text.count("https://a.com") == 1
+    assert source_text.count("https://b.com") == 1
     assert len(context) > 0
-    assert len(sources) > 0
+    assert len(source_text) > 0
 
 
 def test_build_context_empty():
-    context, sources = build_context_from_snippets([])
+    context, source_text = build_context_from_snippets([])
     assert context == ""
-    assert sources == ""
+    assert source_text == ""
 
 
 def test_synthesize_stream_no_key_fallback(monkeypatch):
