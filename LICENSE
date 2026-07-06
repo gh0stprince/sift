@@ -1,36 +1,44 @@
-LICENSE FOR SIFT
+PERSONAL USE LICENSE
 
 Copyright (c) 2026 gh0stprince
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to use,
-copy, modify, merge, publish, and distribute copies of the Software for
-personal, educational, and non-commercial purposes, subject to the following
-conditions:
+of this software and associated documentation files (the "Software"), to use
+the Software for personal, non-commercial purposes only, subject to the
+following conditions:
 
-1. NON-COMMERCIAL USE
-   The Software may not be used for commercial purposes by anyone except the
-   copyright holder (gh0stprince@github). 
+1. PERSONAL USE ONLY
+   The Software is licensed solely for personal, non-commercial use.
+   
+   "Personal use" means:
+   - Individual use for personal projects
+   - Educational and research purposes
+   - Modification for personal learning
+   
+   Prohibited uses include:
+   - Commercial use of any kind
+   - Distribution to others
+   - Use in any business, organization, or institutional setting
+   - Incorporation into any product or service
+   - Monetization through any revenue model
 
-   "Commercial purposes" includes but is not limited to:
-   - Selling the Software or derivative works
-   - Using the Software to provide paid services
-   - Incorporating the Software into products or services offered for sale
-   - Monetization through advertising, subscriptions, or any revenue model
+2. NO REDISTRIBUTION
+   You may not distribute, sublicense, or transfer this Software to any
+   third party. This license is personal to you.
 
-2. AUTHOR COMMERCIAL RIGHTS RESERVED
-   The copyright holder retains exclusive rights to use the Software for any
-   commercial purpose, including but not limited to:
-   - Offering the Software as a paid product or service
-   - Licensing the Software to third parties for commercial use
-   - Creating and selling derivative works
-   - Profiting from the Software in any form
+3. NO MODIFICATION FOR DISTRIBUTION
+   You may modify the Software for your own personal use, but you may not
+   distribute modified versions.
 
-3. ATTRIBUTION
-   The above copyright notice and this permission notice shall be included in
-   all copies or substantial portions of the Software.
+4. AUTHOR RETAINS ALL RIGHTS
+   The copyright holder retains all rights not expressly granted herein,
+   including but not limited to:
+   - Exclusive commercial licensing rights
+   - Distribution rights
+   - Modification and derivative work rights
+   - All proprietary rights
 
-4. NO WARRANTY
+5. NO WARRANTY
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -39,4 +47,4 @@ conditions:
    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
    DEALINGS IN THE SOFTWARE.
 
-For commercial licensing inquiries, contact the copyright holder.
+For licensing inquiries, contact the copyright holder.
