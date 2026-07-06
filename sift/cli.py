@@ -30,6 +30,10 @@ def main(ctx, db):
 
     Search, explore, and analyze web content through RSS feeds,
     recursive research pulses, and full-text search.
+
+    
+    First time? Run: sift feeds init && sift ingest
+    Then try: sift ask "your research question"
     """
     from sift.db import DB
 
@@ -61,7 +65,9 @@ def search(ctx, query, limit, fresh):
     results = db.search(query, limit=limit, fresh=fresh)
 
     if not results:
-        click.echo("No results found. Try `sift pulse <query>` to discover content.")
+        click.secho("No results found. Try ", nl=False)
+        click.secho("`sift pulse <query>`", bold=True, nl=False)
+        click.secho(" to discover content.")
         return
 
     for r in results:
@@ -115,7 +121,9 @@ def feeds(ctx, action, args):
     if action == "list":
         sources = fetcher.list_feeds()
         if not sources:
-            click.echo("No feeds registered. Run `sift feeds init` to add defaults.")
+            click.secho("No feeds registered. Run ", nl=False)
+            click.secho("`sift feeds init`", bold=True, nl=False)
+            click.secho(" to add defaults.")
             return
         for s in sources:
             click.echo(f"{s['id']:>3}  {s['name']:<25}  {s['feed_url']}")
@@ -356,15 +364,24 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
 
     # --wiki: save to raw/queries/
     if wiki:
-        from sift.wiki import write_raw_source, slugify
+        from sift.wiki import write_raw_source, slugify, split_answer_reasoning, extract_sources_from_answer
         slug = wiki_slug or slugify(query)
         title = wiki_slug.replace("-", " ").title() if wiki_slug else query[:60]
-        src_urls = []
+        
+        # Split to get reasoning (contains source references) and extract URLs
+        answer, reasoning = split_answer_reasoning(final_answer)
+        all_text = answer + "\n" + reasoning
+        
+        src_urls = extract_sources_from_answer(all_text)
+        # Also extract from source_text (the bibliography we built)
         for line in source_text.split("\n"):
             if "http" in line:
                 for part in line.split():
                     if part.startswith("http"):
-                        src_urls.append(part.rstrip(","))
+                        url = part.rstrip(",)")
+                        if url not in src_urls:
+                            src_urls.append(url)
+        
         path = write_raw_source(title, slug, query, final_answer, src_urls)
         click.secho(f"\n[Wiki: saved to {path}]", dim=True)
 

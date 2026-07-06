@@ -16,7 +16,7 @@
 Place a `.env` in the directory where you run `sift`. Example:
 
 ```bash
-OPENAI_API_KEY=sk-4zZOX4PmE859fvJ1fUzy1p4C9bq5DKLTmNM1FPKdpKuHdc9fNayrMo9QMAA9XzLJ
+OPENAI_API_KEY=sk-your-api-key-here
 OPENAI_BASE_URL=https://opencode.ai/zen/go/v1/chat/completions
 OPENAI_MODEL=qwen3.7-plus
 ```

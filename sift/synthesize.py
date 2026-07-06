@@ -111,7 +111,7 @@ def synthesize(
         "You are a research assistant. Answer the user's question based ONLY "
         "on the provided context. Cite sources inline using [1], [2], etc. "
         "If the context doesn't contain enough information, say so clearly. "
-        "Be concise — aim for 2-4 paragraphs. Always end with a clear summary."
+        "Be comprehensive — aim for 3-5 paragraphs. Always end with a clear summary."
         " Do NOT include any thinking, reasoning, analysis, or internal monologue."
         " Just provide the answer directly."
     )
@@ -189,7 +189,7 @@ def synthesize_stream(
         "You are a research assistant. Answer the user's question based ONLY "
         "on the provided context. Cite sources inline using [1], [2], etc. "
         "If the context doesn't contain enough information, say so clearly. "
-        "Be concise — aim for 2-4 paragraphs. Always end with a clear summary."
+        "Be comprehensive — aim for 3-5 paragraphs with clear structure. Always end with a clear summary."
         " Do NOT include any thinking, reasoning, analysis, or internal monologue."
         " Just provide the answer directly."
     )
