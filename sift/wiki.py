@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import re
 from datetime import date, datetime, timezone
 from pathlib import Path
-
 
 WIKI_RAW_DIR = Path.home() / "llm-wiki" / "raw" / "queries"
 
@@ -93,7 +91,7 @@ def write_raw_source(
 
     # Build body — use the full synthesis, not a cleaned version
     body = synthesis
-    
+
     # Build frontmatter
     tag_lines = "  - topic:research"
 

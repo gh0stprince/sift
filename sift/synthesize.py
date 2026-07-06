@@ -1,22 +1,35 @@
 """Answer synthesis — LLM with inline citations from search results."""
 
+import json
 import os
-import re
 from typing import Any, Generator
 
+from dotenv import load_dotenv
 import httpx
+
+load_dotenv()
 
 # Default endpoint — OpenCode Go (this session's active provider)
 # Used when no API key or custom endpoint is configured.
-DEFAULT_API_URL = "https://opencode.ai/zen/go/v1/chat/completions"
+DEFAULT_API_URL = (
+    os.environ.get("OPENAI_BASE_URL")
+    or "https://opencode.ai/zen/go/v1/chat/completions"
+)
 
 # API key resolution order: explicit arg > env var > None
-# For local dev, set OPENCODE_GO_API_KEY or AUXILIARY_APPROVAL_API_KEY
-DEFAULT_API_KEY = os.environ.get("OPENCODE_GO_API_KEY") or os.environ.get("AUXILIARY_APPROVAL_API_KEY")
-
+# For local dev, set OPENAI_API_KEY, OPENCODE_GO_API_KEY or AUXILIARY_APPROVAL_API_KEY
+DEFAULT_API_KEY = (
+    os.environ.get("OPENAI_API_KEY")
+    or os.environ.get("OPENCODE_GO_API_KEY")
+    or os.environ.get("AUXILIARY_APPROVAL_API_KEY")
+)
 
 # Model: use the active model from provider config
-DEFAULT_MODEL = os.environ.get("AUXILIARY_APPROVAL_MODEL") or "deepseek-v4-flash"
+DEFAULT_MODEL = (
+    os.environ.get("OPENAI_MODEL")
+    or os.environ.get("AUXILIARY_APPROVAL_MODEL")
+    or "qwen3.7-plus"
+)
 
 
 def build_context(results: list[dict[str, Any]], limit: int = 10) -> tuple[str, str]:
@@ -84,7 +97,10 @@ def synthesize(
     prefixed with ``[Synthesis error]`` if the call fails.
     """
     if not api_key:
-        return "[Synthesis error] No API key configured for LLM synthesis.\nSet OPENCODE_GO_API_KEY or configure auth.json."
+        return (
+            "[Synthesis error] No API key configured for LLM synthesis.\n"
+            "Set OPENAI_API_KEY or configure auth.json."
+        )
 
     headers = {
         "Authorization": f"Bearer {api_key}",
