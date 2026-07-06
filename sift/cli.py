@@ -363,7 +363,10 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
 
     # --wiki: save to raw/queries/
     if wiki:
-        from sift.wiki import write_raw_source, slugify, split_answer_reasoning, extract_sources_from_answer
+        from sift.wiki import (
+            write_raw_source, slugify, split_answer_reasoning,
+            extract_sources_from_answer
+        )
         slug = wiki_slug or slugify(query)
         title = wiki_slug.replace("-", " ").title() if wiki_slug else query[:60]
 
