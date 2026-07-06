@@ -108,19 +108,25 @@ class DB:
         if re.search(r'[-:()*"\'\[\]\\]', query):
             query = f'"{query}"'
 
-        order_clause = (
-            "ORDER BY rank / MAX(1.0, julianday('now') - COALESCE(julianday(p.fetched_at), julianday('now')))"
-            if fresh
-            else "ORDER BY rank"
-        )
-        sql = f"""SELECT p.id, p.url, p.title, p.content, p.source_id, p.fetched_at,
-                         p.pulse_id, p.link_depth,
-                         snippet(pages_fts, 1, '<b>', '</b>', '...', 64) AS excerpt
-                  FROM pages_fts
-                  JOIN pages p ON pages_fts.rowid = p.id
-                  WHERE pages_fts MATCH ?
-                  {order_clause}
-                  LIMIT ?"""
+        # Build query with parameterized values only - order clause is hardcoded, not user input
+        if fresh:
+            sql = """SELECT p.id, p.url, p.title, p.content, p.source_id, p.fetched_at,
+                            p.pulse_id, p.link_depth,
+                            snippet(pages_fts, 1, '<b>', '</b>', '...', 64) AS excerpt
+                     FROM pages_fts
+                     JOIN pages p ON pages_fts.rowid = p.id
+                     WHERE pages_fts MATCH ?
+                     ORDER BY rank / MAX(1.0, julianday('now') - COALESCE(julianday(p.fetched_at), julianday('now')))
+                     LIMIT ?"""
+        else:
+            sql = """SELECT p.id, p.url, p.title, p.content, p.source_id, p.fetched_at,
+                            p.pulse_id, p.link_depth,
+                            snippet(pages_fts, 1, '<b>', '</b>', '...', 64) AS excerpt
+                     FROM pages_fts
+                     JOIN pages p ON pages_fts.rowid = p.id
+                     WHERE pages_fts MATCH ?
+                     ORDER BY rank
+                     LIMIT ?"""
         cursor = self.conn.execute(sql, (query, limit))
         return [dict(row) for row in cursor.fetchall()]
 
