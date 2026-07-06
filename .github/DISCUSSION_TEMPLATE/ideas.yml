@@ -1,0 +1,46 @@
+title: ""
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 💡 Idea / Feature Request
+
+        Sift is a personal research tool — local-first, AI-assisted, focused
+        on discovery and synthesis. Ideas that fit that scope are most likely
+        to be picked up.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What can't you do right now that you'd like to?
+      placeholder: I often need to ... and right now I have to manually ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How do you imagine it working? A new command? A flag? A config option?
+      placeholder: "A `sift dig` command that ... or a `--depth` option on `sift pulse`"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives & prior art
+      description: What else have you considered? Other tools that do this?
+      placeholder: "I've tried X but it's too heavy. PaperQA does this but requires a server."
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Links, rough sketches, anything else.
+    validations:
+      required: false

@@ -1,0 +1,41 @@
+title: ""
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 📋 Before Asking
+
+        - Check the [docs](https://github.com/gh0stprince/sift/tree/main/docs)
+          and the [FAQ](https://github.com/gh0stprince/sift/blob/main/docs/FAQ.md)
+        - Search [existing issues](https://github.com/gh0stprince/sift/issues)
+          and discussions for similar questions
+        - Try `sift --help` and `sift <command> --help` first
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What are you trying to do? What have you tried?
+      placeholder: I'm trying to ... but when I run ... I get ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: What version of Sift, Python, and OS are you on?
+      placeholder: "Sift: commit abc1234, Python 3.11, Windows 10"
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Any relevant config, error output, or steps to reproduce.
+      placeholder: "Error output, `.env` contents (redact keys), etc."
+    validations:
+      required: false

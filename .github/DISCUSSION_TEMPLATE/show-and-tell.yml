@@ -1,0 +1,35 @@
+title: ""
+labels: ["show-and-tell"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🎉 Show and Tell
+
+        Share what you've built or discovered with Sift! Workflows, research
+        pipelines, integrations, or interesting findings.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What are you showing?
+      description: Tell us about your setup, workflow, or what you found.
+      placeholder: I set up Sift to crawl my favorite blogs and ask questions across all of them...
+    validations:
+      required: true
+
+  - type: input
+    id: link
+    attributes:
+      label: Link or gist (optional)
+      description: Got a blog post, gist, or GitHub repo?
+    validations:
+      required: false
+
+  - type: textarea
+    id: tips
+    attributes:
+      label: Tips for others
+      description: Anything you learned that might help other users?
+    validations:
+      required: false

@@ -1,0 +1,44 @@
+title: ""
+labels: ["discussion"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        # 📋 Discussion Guidelines
+
+        Welcome to the Sift community. A few guidelines to keep this space
+        useful and constructive:
+
+        **Be respectful.** Disagreement is fine; personal attacks aren't.
+        This is a small project — treat people the way you'd want to be treated.
+
+        **Stay on topic.** Sift is a personal research tool. Discussions about
+        web research, local AI, RSS feeds, knowledge management, and related
+        tooling are all welcome. Off-topic promotion or spam isn't.
+
+        **Search first.** Before posting, check the
+        [docs](https://github.com/gh0stprince/sift/tree/main/docs),
+        [FAQ](https://github.com/gh0stprince/sift/blob/main/docs/FAQ.md),
+        [issues](https://github.com/gh0stprince/sift/issues), and past
+        discussions. Duplicates happen — a link to the existing thread is
+        more helpful than a re-post.
+
+        **No license-baiting.** Sift has a
+        [custom non-commercial license](https://github.com/gh0stprince/sift/blob/main/LICENSE).
+        If that doesn't work for you, that's fine — fork under the license
+        terms. Please don't open discussions arguing about the licensing model.
+
+        **Use the right category.**
+        - **Q&A** — questions about using or setting up Sift
+        - **Ideas** — feature proposals and suggestions
+        - **Show and tell** — share what you've built or discovered
+        - **General** — anything else that fits
+
+  - type: textarea
+    id: body
+    attributes:
+      label: Discussion
+      description: What's on your mind?
+      placeholder: Share your thoughts, questions, or announcements here.
+    validations:
+      required: true
