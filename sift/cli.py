@@ -31,7 +31,6 @@ def main(ctx, db):
     Search, explore, and analyze web content through RSS feeds,
     recursive research pulses, and full-text search.
 
-    
     First time? Run: sift feeds init && sift ingest
     Then try: sift ask "your research question"
     """
@@ -367,11 +366,11 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
         from sift.wiki import write_raw_source, slugify, split_answer_reasoning, extract_sources_from_answer
         slug = wiki_slug or slugify(query)
         title = wiki_slug.replace("-", " ").title() if wiki_slug else query[:60]
-        
+
         # Split to get reasoning (contains source references) and extract URLs
         answer, reasoning = split_answer_reasoning(final_answer)
         all_text = answer + "\n" + reasoning
-        
+
         src_urls = extract_sources_from_answer(all_text)
         # Also extract from source_text (the bibliography we built)
         for line in source_text.split("\n"):
@@ -381,7 +380,7 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
                         url = part.rstrip(",)")
                         if url not in src_urls:
                             src_urls.append(url)
-        
+
         path = write_raw_source(title, slug, query, final_answer, src_urls)
         click.secho(f"\n[Wiki: saved to {path}]", dim=True)
 

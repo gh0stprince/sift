@@ -31,13 +31,13 @@ CLEANUP_MODEL = (
 
 def cleanup_with_llm(raw_synthesis: str, query: str) -> tuple[str, str]:
     """Use LLM to extract clean answer and summary from raw synthesis.
-    
+
     Returns (clean_answer, one_line_summary).
     """
     if not CLEANUP_API_KEY:
         # Fallback: return raw synthesis as-is
         return raw_synthesis, ""
-    
+
     system_prompt = (
         "You are a document cleaner. Your job is to extract ONLY the final "
         "answer from a research synthesis that may contain thinking steps.\n\n"
@@ -52,14 +52,14 @@ def cleanup_with_llm(raw_synthesis: str, query: str) -> tuple[str, str]:
         "---\n"
         "<clean answer here>"
     )
-    
+
     user_prompt = f"Query: {query}\n\nRaw synthesis:\n{raw_synthesis}"
-    
+
     headers = {
         "Authorization": f"Bearer {CLEANUP_API_KEY}",
         "Content-Type": "application/json",
     }
-    
+
     payload = {
         "model": CLEANUP_MODEL,
         "messages": [
@@ -69,23 +69,23 @@ def cleanup_with_llm(raw_synthesis: str, query: str) -> tuple[str, str]:
         "temperature": 0.2,
         "max_tokens": 2048,
     }
-    
+
     try:
         resp = httpx.post(CLEANUP_API_URL, json=payload, headers=headers, timeout=60)
         resp.raise_for_status()
         data = resp.json()
         content = data["choices"][0]["message"].get("content", "")
-        
+
         # Parse SUMMARY: ... --- ... format
         if "SUMMARY:" in content and "---" in content:
             parts = content.split("---", 1)
             summary = parts[0].replace("SUMMARY:", "").strip()
             clean = parts[1].strip()
             return clean, summary
-        
+
         # Fallback: return everything as answer
         return content, ""
-        
+
     except Exception:
         # On any error, return raw synthesis
         return raw_synthesis, ""
@@ -107,20 +107,20 @@ def split_answer_reasoning(text: str) -> tuple[str, str]:
     Returns (answer, reasoning) tuple.
     """
     lines = text.split("\n")
-    
+
     reasoning_lines = []
     answer_lines = []
     in_answer = False
-    
+
     for i, line in enumerate(lines):
         stripped = line.strip()
         if not stripped:
             continue
-        
+
         # Detect if this line is part of numbered thinking process
         # Pattern: "1.  **Verb**" or "1. **Verb**" at start of line
         is_numbered_thinking = bool(re.match(r"^\d+\.\s+\*\*", stripped))
-        
+
         # Or bullet points that are part of analysis (indented or with asterisk)
         is_analysis_bullet = bool(re.match(
             r"^(\s+\*|\*\s+)(Target|Goal|Constraints|Context|"
@@ -129,14 +129,14 @@ def split_answer_reasoning(text: str) -> tuple[str, str]:
             r"Synthesize|Structure|Paragraph|Summary|Refine|Citation)",
             stripped, re.IGNORECASE
         ))
-        
+
         # Or any line that's clearly indented continuation of analysis
         is_indented_continuation = bool(re.match(
             r"^\s+(Context|Wait,|It details|It contrasts|Mentions|"
             r"Example given|For example|Specifically|The)",
             stripped
         ))
-        
+
         # Or standalone meta-thinking lines
         is_meta_line = bool(re.match(
             r"^(Thinking\.?|Let me|I should|From the context|The context also|"
@@ -145,7 +145,7 @@ def split_answer_reasoning(text: str) -> tuple[str, str]:
             r"Let's draft:)",
             stripped, re.IGNORECASE
         ))
-        
+
         if in_answer:
             # Once we're in answer, everything goes to answer
             answer_lines.append(line)
@@ -156,10 +156,10 @@ def split_answer_reasoning(text: str) -> tuple[str, str]:
             # First non-reasoning line starts the answer
             in_answer = True
             answer_lines.append(line)
-    
+
     reasoning = "\n".join(reasoning_lines).strip()
     answer = "\n".join(answer_lines).strip()
-    
+
     # Fallback: if no clear split found, look for paragraph transition
     if not answer and reasoning:
         paragraphs = [p.strip() for p in reasoning.split("\n\n") if p.strip()]
@@ -169,14 +169,14 @@ def split_answer_reasoning(text: str) -> tuple[str, str]:
                 answer = "\n\n".join(paragraphs[j:])
                 reasoning = "\n\n".join(paragraphs[:j])
                 break
-    
+
     # Final fallback: if still no answer, take last paragraph as answer
     if not answer:
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
         if paragraphs:
             answer = paragraphs[-1]
             reasoning = "\n\n".join(paragraphs[:-1]) if len(paragraphs) > 1 else ""
-    
+
     return answer, reasoning
 
 
@@ -205,7 +205,7 @@ def write_raw_source(
 
     # Run LLM cleanup pass to get clean answer and summary
     clean_answer, summary = cleanup_with_llm(synthesis, query)
-    
+
     # Also try local split as fallback content for reasoning section
     _, reasoning = split_answer_reasoning(synthesis)
 
@@ -214,7 +214,7 @@ def write_raw_source(
 
     # Build frontmatter
     tag_lines = "  - topic:research"
-    
+
     # Add summary as description if we got one
     summary_line = f'description: "{summary[:100]}"\n' if summary else ""
 
@@ -239,7 +239,10 @@ ingested: {today}
 
     # Add raw reasoning as appendix if present
     if reasoning:
-        body += f"\n\n<details>\n<summary>Raw reasoning (model thinking)</summary>\n\n{reasoning}\n</details>"
+        body += (
+            f"\n\n<details>\n<summary>Raw reasoning (model thinking)</summary>\n\n"
+            f"{reasoning}\n</details>"
+        )
 
     if sources:
         body += "\n\n## Sources\n\n"
