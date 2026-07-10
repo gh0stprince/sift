@@ -93,6 +93,16 @@ class TestGetRoot:
         result = DomainCrawler._get_root("not-a-url")
         assert result == ""
 
+    def test_get_root_rejects_non_http_urls(self) -> None:
+        """Crawling is limited to web URLs, never file or custom schemes."""
+        assert DomainCrawler._get_root("file:///tmp/site") == ""
+
+    def test_internal_url_requires_same_host(self) -> None:
+        root = "https://example.com"
+        assert DomainCrawler._is_internal_url("https://example.com/page", root)
+        assert not DomainCrawler._is_internal_url("https://example.com.evil/page", root)
+        assert not DomainCrawler._is_internal_url("file:///etc/passwd", root)
+
 
 class TestDiscoverSitemapsReal:
     """Actually hit sitemaps.org and verify sitemap discovery."""

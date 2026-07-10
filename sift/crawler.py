@@ -53,7 +53,21 @@ class DomainCrawler:
     def _get_root(url: str) -> str:
         """Extract ``scheme://hostname`` from *url* using ``urlparse``."""
         parsed = urlparse(url)
-        return f"{parsed.scheme}://{parsed.hostname}" if parsed.hostname else ""
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return ""
+        return f"{parsed.scheme}://{parsed.hostname}"
+
+    @staticmethod
+    def _is_internal_url(url: str, root: str) -> bool:
+        """Return whether *url* is an HTTP(S) URL on the crawl host."""
+        parsed_url = urlparse(url)
+        parsed_root = urlparse(root)
+        return (
+            parsed_url.scheme in {"http", "https"}
+            and parsed_url.hostname is not None
+            and parsed_root.hostname is not None
+            and parsed_url.hostname.casefold() == parsed_root.hostname.casefold()
+        )
 
     # ------------------------------------------------------------------
     # Sitemap discovery
@@ -81,7 +95,7 @@ class DomainCrawler:
                     parts = line.split(":", 1)
                     if len(parts) == 2:
                         url = parts[1].strip()
-                        if url:
+                        if url and self._is_internal_url(url, root):
                             sitemaps.append(url)
             if sitemaps:
                 return sitemaps
@@ -199,9 +213,7 @@ class DomainCrawler:
                 if clean in visited or clean in frontier:
                     continue
                 # Keep only internal links (same root)
-                if clean.startswith(root_norm) or clean.startswith(
-                    root_norm.replace("http://", "https://")
-                ):
+                if self._is_internal_url(clean, root_norm):
                     frontier.append(clean)
 
             if len(discovered) >= max_pages:
@@ -233,7 +245,7 @@ class DomainCrawler:
             ``pages_fetched``, and ``errors``.
         """
         root = self._get_root(url)
-        if not root:
+        if not root or max_pages < 1:
             return {
                 "source_id": None,
                 "urls_discovered": 0,
@@ -256,6 +268,15 @@ class DomainCrawler:
                 if len(urls_to_fetch) >= max_pages:
                     urls_to_fetch = urls_to_fetch[:max_pages]
                     break
+
+        # Sitemaps are untrusted input; keep the crawl scoped to its host.
+        urls_to_fetch = list(
+            dict.fromkeys(
+                page_url
+                for page_url in urls_to_fetch
+                if self._is_internal_url(page_url, root)
+            )
+        )[:max_pages]
 
         # Phase 2: Fall back to BFS crawl if no sitemap URLs found
         if not urls_to_fetch:

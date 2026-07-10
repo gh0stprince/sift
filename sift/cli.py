@@ -55,7 +55,7 @@ def main(ctx, db):
 
 @main.command()
 @click.argument("query")
-@click.option("--limit", default=10, type=int, help="Max results to return")
+@click.option("--limit", default=10, type=click.IntRange(min=1), help="Max results to return")
 @click.option("--fresh", is_flag=True, help="Boost recent results")
 @click.pass_context
 def search(ctx, query, limit, fresh):
@@ -86,8 +86,8 @@ def search(ctx, query, limit, fresh):
 
 @main.command()
 @click.argument("query")
-@click.option("--depth", default=2, type=int, help="Link-following depth")
-@click.option("--max-pages", default=30, type=int, help="Max pages to fetch")
+@click.option("--depth", default=2, type=click.IntRange(min=0), help="Link-following depth")
+@click.option("--max-pages", default=30, type=click.IntRange(min=1), help="Max pages to fetch")
 @click.pass_context
 def pulse(ctx, query, depth, max_pages):
     """Run a research pulse: recursively discover content from a query."""
@@ -147,7 +147,7 @@ def feeds(ctx, action, args):
 
 
 @main.command()
-@click.option("--max-per-feed", default=10, type=int, help="Max entries per feed")
+@click.option("--max-per-feed", default=10, type=click.IntRange(min=1), help="Max entries per feed")
 @click.pass_context
 def ingest(ctx, max_per_feed):
     """Fetch and index pages from all registered feeds."""
@@ -214,7 +214,7 @@ def _show_raw_results(items, *, header=None, text_key="excerpt"):
 
 @main.command()
 @click.argument("query")
-@click.option("--limit", default=10, type=int, help="Max search results")
+@click.option("--limit", default=10, type=click.IntRange(min=1), help="Max search results")
 @click.option(
     "--no-llm",
     is_flag=True,

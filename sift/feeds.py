@@ -225,7 +225,8 @@ class FeedFetcher:
                         stats["pages_skipped"] += 1
                         continue
                 except Exception:
-                    pass  # treat DB error as "not found" and try anyway
+                    stats["errors"] += 1
+                    continue
 
                 # Fetch and store
                 try:

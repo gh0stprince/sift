@@ -1,5 +1,8 @@
 import os
 import tempfile
+
+from pathlib import Path
+
 import pytest
 from sift.db import DB
 
@@ -33,6 +36,25 @@ def test_create_db(db):
     assert "pages_ai" in trigger_names
     assert "pages_ad" in trigger_names
     assert "pages_au" in trigger_names
+
+
+def test_relative_db_path(tmp_path, monkeypatch):
+    """A database path without a directory component should be supported."""
+    monkeypatch.chdir(tmp_path)
+
+    database = DB(Path("relative.db"))
+    try:
+        database.add_page("https://example.com", "Example", "Content")
+        assert database.conn.execute("SELECT COUNT(*) FROM pages").fetchone()[0] == 1
+    finally:
+        database.close()
+
+
+def test_search_ignores_empty_queries(db):
+    """Empty or non-positive searches should not reach the FTS parser."""
+    assert db.search("") == []
+    assert db.search("   ") == []
+    assert db.search("term", limit=0) == []
 
 
 def test_add_page_and_search(db):

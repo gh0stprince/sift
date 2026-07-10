@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import re
+from pathlib import Path
 
 DB_DIR = os.path.expanduser("~/.sift")
 DB_PATH = os.path.join(DB_DIR, "sift.db")
@@ -10,8 +11,8 @@ class DB:
     """SQLite FTS5-backed database manager for Sift search index."""
 
     def __init__(self, db_path=None):
-        self.db_path = db_path or DB_PATH
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        self.db_path = Path(db_path or DB_PATH).expanduser()
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
@@ -102,6 +103,9 @@ class DB:
         return cursor.lastrowid
 
     def search(self, query, limit=10, fresh=False):
+        if not query or not query.strip() or limit < 1:
+            return []
+
         # Sanitize FTS5 query: escape special chars that cause syntax errors
         # Hyphens, colons, brackets are FTS5 operators — quote the whole query as a phrase
         # if it contains special characters, otherwise use as-is for prefix matching
