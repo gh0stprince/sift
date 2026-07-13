@@ -108,6 +108,9 @@ def pulse(ctx, query, depth, max_pages):
         f"✅ Pulse complete — {result.get('pages_found', 0)} pages found"
         f" (pulse_id={result.get('pulse_id')})"
     )
+    click.echo(
+        f"   Robots skipped: {result.get('robots_skipped', 0)}"
+    )
 
 
 @main.command()
@@ -412,6 +415,7 @@ def crawl(ctx, url, max_pages):
     click.echo(f"   URLs discovered: {stats['urls_discovered']}")
     click.echo(f"   Pages stored:    {stats['pages_fetched']}")
     click.echo(f"   Errors:          {stats['errors']}")
+    click.echo(f"   Robots skipped:  {stats.get('robots_skipped', 0)}")
 
 
 if __name__ == "__main__":
