@@ -50,7 +50,10 @@ class EndpointSynthesizer:
     """OpenAI-compatible JSON endpoint; response must contain a JSON object."""
 
     def __init__(self, url: str | None = None, model: str | None = None, api_key: str | None = None):
-        self.url = url or os.environ.get("SIFT_CURATE_URL") or os.environ.get("OPENAI_BASE_URL")
+        # Curation must opt in explicitly; a generic OPENAI_BASE_URL may belong to
+        # the interactive synthesizer and can make deterministic tests or dry-runs
+        # unexpectedly call an authenticated remote endpoint.
+        self.url = url or os.environ.get("SIFT_CURATE_URL")
         self.model = model or os.environ.get("SIFT_CURATE_MODEL") or os.environ.get("OPENAI_MODEL", "")
         self.api_key = api_key or os.environ.get("SIFT_CURATE_API_KEY") or os.environ.get("OPENAI_API_KEY")
 
@@ -103,9 +106,87 @@ def read_capture(path: Path) -> RawCapture:
     return RawCapture(path, metadata, body, hashlib.sha256(raw).hexdigest())
 
 
+def _yaml_string(value: Any) -> str:
+    """Encode a scalar safely as a YAML double-quoted string."""
+    return json.dumps(str(value), ensure_ascii=False)
+
+
+def _inline_text(value: Any) -> str:
+    """Keep provenance readable without allowing Markdown control characters."""
+    return " ".join(str(value).replace("`", "'").split())
+
+
+def _validate_raw_capture(path: Path, capture: RawCapture, vault: Path) -> None:
+    """Reject curated pages before they can be fed back into curation."""
+    resolved = path.resolve()
+    for root in (vault / "20-knowledge-tech", vault / "30-knowledge-spiritual", vault / "40-entities"):
+        try:
+            resolved.relative_to(root.resolve())
+        except ValueError:
+            continue
+        raise CurationError(
+            f"refusing curated page {path}: --file must point to a raw capture "
+            "under raw/queries (frontmatter type: raw-source)"
+        )
+    declared_type = str(capture.metadata.get("type", "")).strip().lower()
+    raw_roots = (vault / "raw" / "queries", vault / "80-raw" / "82-queries")
+    in_raw_root = any(
+        _is_relative_to(resolved, root.resolve()) for root in raw_roots
+    )
+    if not in_raw_root and declared_type != "raw-source":
+        raise CurationError(
+            f"refusing {path}: input is not under raw/queries and is not marked "
+            "type: raw-source; pass the original raw capture"
+        )
+    if declared_type and declared_type != "raw-source":
+        raise CurationError(
+            f"refusing {path.name}: frontmatter type is {declared_type!r}, not "
+            "raw-source; pass the original file from raw/queries instead"
+        )
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _clean_model_text(text: str) -> str:
+    """Keep answer text, excluding model traces and rendered source sections."""
+    text = re.sub(r"^---\s*\n.*?\n---\s*\n", "", text.strip(), count=1, flags=re.S)
+    text = re.sub(r"<details>.*?</details>", "", text, flags=re.S | re.I)
+    text = re.split(r"^##\s+(?:Sources|Sift curation update)\s*$", text,
+                    maxsplit=1, flags=re.M | re.I)[0]
+    lines = text.strip().splitlines()
+    cleaned: list[str] = []
+    skipping = False
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r"^Thinking(?:\.{1,3}|:)?.*", stripped, re.I):
+            skipping = True
+            continue
+        final_match = re.match(r"^(?:Final answer|Answer)\s*:?\s*(.*)$", stripped, re.I)
+        if final_match:
+            skipping = False
+            if final_match.group(1):
+                cleaned.append(final_match.group(1))
+            continue
+        if re.match(r"^(?:Reasoning\.?|Analysis:?)$", stripped, re.I):
+            skipping = True
+            continue
+        if re.match(r"^\d+[.)]\s+(?:\*\*)?\s*(Analyze|Analysis|Context|Draft|Review|Reason|Synthesize|Refine)\b", stripped, re.I):
+            skipping = True
+            continue
+        if not skipping:
+            cleaned.append(line)
+    return "\n".join(cleaned).strip()
+
+
 def _heuristic_synthesis(capture: RawCapture) -> dict[str, Any]:
     title = capture.metadata.get("title") or capture.path.stem.replace("-", " ").title()
-    clean = re.sub(r"<details>.*?</details>", "", capture.body, flags=re.S).strip()
+    clean = _clean_model_text(capture.body)
     clean = re.sub(r"\n---\n.*", "", clean, flags=re.S).strip()
     return {"title": title, "type": "concept", "summary": clean.split("\n", 1)[0][:240],
             "body": clean, "links": [], "claims": []}
@@ -118,20 +199,26 @@ def _yaml_value(value: Any) -> str:
 def _page_content(result: dict[str, Any], capture: RawCapture, links: list[str], conflicts: list[str]) -> str:
     today = date.today().isoformat()
     title = str(result["title"]).strip()
+    title_yaml = _yaml_string(title)
     tags = ["topic:research", "workflow:curated"]
-    lines = ["---", f'title: "{title.replace(chr(34), chr(39))}"', f"created: {today}", f"updated: {today}",
+    lines = ["---", f"title: {title_yaml}", f"created: {today}", f"updated: {today}",
              f"type: {result['type']}", "tags:"] + [f"  - {tag}" for tag in tags]
     lines += ["workflow: curated", "confidence: medium", "sources:"]
     source_urls = capture.metadata.get("source_urls", []) or [capture.metadata.get("source_url", "")]
+    source_urls = [str(url) for url in source_urls if str(url).strip()]
+    source_query = str(capture.metadata.get("source_query", "")).strip()
+    query_display = source_query or "incomplete: source_query missing"
     for url in source_urls:
-        lines += [f'  - url: "{url}"',
-                  f'    query: "{capture.metadata.get("source_query", "")}"',
+        lines += [f"  - url: {_yaml_string(url)}",
+                  f"    query: {_yaml_string(query_display)}",
                   f"    captured: {capture.metadata.get('ingested', today)}",
                   f"    sha256: {capture.digest}"]
+    safe_title = _inline_text(title)
+    safe_query = _inline_text(query_display)
     if conflicts:
-        lines += ["contradictions:"] + [f'  - claim: "{item.replace(chr(34), chr(39))}"\n    resolution: pending' for item in conflicts]
-    lines += ["---", "", f"# {title}", "", _normalize_markdown(str(result.get("body", ""))), "", "## Sources", "",
-              f"- Raw capture: `raw/queries/{capture.path.name}`", f"- Query: `{capture.metadata.get('source_query', '')}`"]
+        lines += ["contradictions:"] + [f'  - claim: {_yaml_string(_inline_text(item))}\n    resolution: pending' for item in conflicts]
+    lines += ["---", "", f"# {safe_title}", "", _normalize_markdown(str(result.get("body", ""))), "", "## Sources", "",
+              f"- Raw capture: `raw/queries/{capture.path.name}`", f"- Source hash: `{capture.digest}`", f"- Query: `{safe_query}`"]
     if links:
         lines += ["", "## Related", ""] + [f"- [[{link}]]" for link in links]
     return "\n".join(lines).rstrip() + "\n"
@@ -199,7 +286,9 @@ def plan_curation(raw_dir: Path, vault: Path, synthesizer: Callable[[RawCapture]
         raise CurationError(f"curation input does not exist: {raw_dir}")
     for path in capture_paths:
         capture = read_capture(path)
+        _validate_raw_capture(path, capture, vault)
         result = synth(capture)
+        result["body"] = _clean_model_text(str(result.get("body", "")))
         page_type = str(result.get("type", "concept")).lower()
         if page_type not in {"concept", "entity"} or not result.get("title") or not result.get("body"):
             raise CurationError(f"provider result for {path.name} is missing a concept/entity title/body")
@@ -208,7 +297,10 @@ def plan_curation(raw_dir: Path, vault: Path, synthesizer: Callable[[RawCapture]
             continue
         seen_slugs.add(slug)
         links = sorted({slugify(str(link)) for link in result.get("links", []) if slugify(str(link)) and slugify(str(link)) != slug})
-        conflicts = [str(item) for item in result.get("conflicts", result.get("claims", [])) if str(item).strip()]
+        conflicts = []
+        if not str(capture.metadata.get("source_query", "")).strip():
+            conflicts.append("Provenance incomplete: raw capture has no source_query")
+        conflicts.extend(str(item) for item in result.get("conflicts", result.get("claims", [])) if str(item).strip())
         target = existing.get(slug)
         content = _page_content(result, capture, links, conflicts)
         if target:

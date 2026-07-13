@@ -83,6 +83,56 @@ def test_file_input_processes_only_selected_capture(tmp_path):
     assert "sibling" not in result.output.lower()
 
 
+def test_curated_file_is_rejected(tmp_path):
+    vault, raw = make_vault(tmp_path)
+    curated = vault / "20-knowledge-tech" / "21-ai-concepts" / "already.md"
+    curated.parent.mkdir(parents=True)
+    curated.write_text("---\ntype: concept\n---\n\nExisting page.\n", encoding="utf-8")
+    result = CliRunner().invoke(main, ["curate", "--file", str(curated),
+                                        "--vault", str(vault), "--dry-run"])
+    assert result.exit_code != 0
+    assert "refusing curated page" in result.output
+    assert "raw capture" in result.output
+
+    elsewhere = tmp_path / "elsewhere.md"
+    elsewhere.write_text("---\ntitle: Elsewhere\n---\n\nExisting page.\n", encoding="utf-8")
+    result = CliRunner().invoke(main, ["curate", "--file", str(elsewhere),
+                                        "--vault", str(vault), "--dry-run"])
+    assert result.exit_code != 0
+    assert "not under raw/queries" in result.output
+
+
+def test_reasoning_and_rendered_sources_are_stripped(tmp_path):
+    vault, raw = make_vault(tmp_path)
+
+    capture = raw / "polluted.md"
+    capture.write_text(
+        "---\ntitle: Folk magic\ntype: raw-source\nsource_query: folk magic\n---\n\n"
+        "Thinking...\n1. **Analyze** the prompt.\n2. **Draft** an answer.\n"
+        "Final answer:\nFolk magic is a useful concept.\n\n## Sources\n\n- https://example.com\n",
+        encoding="utf-8",
+    )
+    plans = plan_curation(raw, vault, lambda _capture: {
+        "title": "Folk magic", "type": "concept",
+        "body": capture.read_text(encoding="utf-8").split("---", 2)[-1],
+        "links": [], "claims": [],
+    })
+    content = next(plan.content for plan in plans if plan.slug == "folk-magic")
+    assert "Folk magic is a useful concept." in content
+    assert "Thinking" not in content
+    assert "Analyze" not in content
+    assert content.count("## Sources") == 1
+
+
+def test_missing_source_query_is_visible_conflict(tmp_path):
+    vault, raw = make_vault(tmp_path)
+    capture = raw / "no-query.md"
+    capture.write_text("---\ntitle: No query\ntype: raw-source\n---\n\nBody.\n", encoding="utf-8")
+    plan = next(plan for plan in plan_curation(raw, vault, synth) if plan.slug == "x-concept")
+    assert "incomplete" in plan.content
+    assert any("source_query" in item for item in plan.conflicts)
+
+
 def test_normalize_markdown_joins_only_wrapped_prose():
     source = ("A wrapped paragraph\ncontinues with `inline code`.\n\n"
               "# Heading\n\n- list item\n  continuation\n\n"
