@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from sift.crawler import DomainCrawler
+from sift.robots import RobotsPolicy
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +87,7 @@ class TestGetRoot:
     def test_get_root_with_port(self) -> None:
         """Root extraction with port number."""
         result = DomainCrawler._get_root("https://example.com:8080/page")
-        assert result == "https://example.com"
+        assert result == "https://example.com:8080"
 
     def test_get_root_invalid(self) -> None:
         """Invalid URL should return empty string."""
@@ -104,15 +105,35 @@ class TestGetRoot:
         assert not DomainCrawler._is_internal_url("file:///etc/passwd", root)
 
 
-class TestDiscoverSitemapsReal:
-    """Actually hit sitemaps.org and verify sitemap discovery."""
+class _RobotsResponse:
+    """Minimal deterministic response for sitemap discovery tests."""
 
-    def test_discover_sitemaps_real(self, crawler: DomainCrawler) -> None:
-        """Hit https://www.sitemaps.org and verify at least one sitemap URL is found."""
-        root = DomainCrawler._get_root("https://www.sitemaps.org")
-        assert root == "https://www.sitemaps.org", "Root extraction should work"
+    text = "User-agent: *\nAllow: /\nSitemap: https://example.com/map.xml\n"
 
+    def raise_for_status(self) -> None:
+        """Match the requests response API used by the policy."""
+
+
+class _RobotsSession:
+    """Session stub that records robots requests without live network I/O."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def get(self, url: str, **_kwargs: object) -> _RobotsResponse:
+        self.calls.append(url)
+        return _RobotsResponse()
+
+
+class TestDiscoverSitemaps:
+    """Sitemap discovery must remain deterministic and robots-aware."""
+
+    def test_discover_sitemaps_from_robots(self, crawler: DomainCrawler) -> None:
+        """Read Sitemap directives without making a live network request."""
+        session = _RobotsSession()
+        crawler.session = session  # type: ignore[assignment]
+        crawler.robots = RobotsPolicy(session, "Sift-Test/0.1")
+        root = "https://example.com"
         sitemaps = crawler._discover_sitemaps(root)
-        assert len(sitemaps) > 0, "Expected at least one sitemap URL from sitemaps.org"
-        for sm in sitemaps:
-            assert sm.startswith("http"), f"Sitemap URL should start with http: {sm}"
+        assert sitemaps == ["https://example.com/map.xml"]
+        assert session.calls == ["https://example.com/robots.txt"]

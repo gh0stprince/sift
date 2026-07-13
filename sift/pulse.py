@@ -17,6 +17,8 @@ import trafilatura
 warnings.filterwarnings("ignore", message=".*ddgs.*renamed.*")
 from ddgs import DDGS
 
+from sift.robots import RobotsPolicy
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,14 +65,16 @@ class PulseEngine:
     def __init__(self, db: Any, user_agent: str | None = None) -> None:
         self.db = db
         self.session = requests.Session()
+        configured_user_agent = user_agent or "Sift/0.1.0 (+https://github.com/gh0st/sift)"
         self.session.headers.update({
-            "User-Agent": user_agent
-            or "Sift/0.1.0 (+https://github.com/gh0st/sift)",
+            "User-Agent": configured_user_agent,
             "Accept": (
                 "text/html,application/xhtml+xml,"
                 "application/xml;q=0.9,*/*;q=0.8"
             ),
         })
+        self.robots = RobotsPolicy(self.session, configured_user_agent)
+        self.robots_skipped: dict[str, int] = {}
         self.ddgs = DDGS()
 
     # ------------------------------------------------------------------
@@ -120,9 +124,18 @@ class PulseEngine:
         time.sleep(1)
         return out
 
+    def _allowed(self, url: str) -> bool:
+        """Check robots and record only a non-sensitive skip reason."""
+        decision = self.robots.check(url)
+        if not decision.allowed:
+            self.robots_skipped[decision.reason] = (
+                self.robots_skipped.get(decision.reason, 0) + 1
+            )
+        return decision.allowed
+
     # ------------------------------------------------------------------
     # Page fetching & storage
-    # ------------------------------------------------------------------
+
 
     def _fetch_and_store(
         self,
@@ -136,6 +149,8 @@ class PulseEngine:
         Returns ``{"id": ..., "url": ..., "title": ..., "content": ...}``
         or ``None`` on any error.
         """
+        if not self._allowed(url):
+            return None
         # Skip if already in DB
         try:
             cur = self.db.conn.execute(
@@ -301,6 +316,8 @@ class PulseEngine:
                 for link in links[:5]:
                     if pages_stored >= max_pages:
                         break
+                    if not self._allowed(link):
+                        continue
                     result = self._fetch_and_store(
                         link, pulse_id, link_depth=1
                     )
@@ -322,4 +339,6 @@ class PulseEngine:
             "query": query,
             "pages_found": pages_stored,
             "total_depth": depth,
+            "robots_skipped": sum(self.robots_skipped.values()),
+            "robots_skip_reasons": dict(self.robots_skipped),
         }

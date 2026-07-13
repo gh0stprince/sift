@@ -46,7 +46,10 @@ sift feed --limit 20
 
 ### `sift crawl`
 
-Crawl a domain and store pages.
+Crawl a domain and store pages. Sift fetches and honors each site's
+robots.txt using the configured Sift User-Agent. If robots.txt is missing,
+unreachable, or malformed, Sift skips that origin (fail-closed) rather than
+silently bypassing its exclusions.
 
 ```bash
 sift crawl https://example.com --max-pages 100

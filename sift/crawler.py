@@ -12,6 +12,7 @@ import requests
 import trafilatura
 
 from sift.pulse import PulseEngine
+from sift.robots import RobotsPolicy
 
 
 def _strip_ns(tag: str) -> str:
@@ -34,16 +35,18 @@ class DomainCrawler:
     def __init__(self, db: Any, user_agent: str | None = None) -> None:
         self.db = db
         self.session = requests.Session()
+        configured_user_agent = user_agent or "Sift/0.1.0 (+https://github.com/gh0st/sift)"
         self.session.headers.update(
             {
-                "User-Agent": user_agent
-                or "Sift/0.1.0 (+https://github.com/gh0st/sift)",
+                "User-Agent": configured_user_agent,
                 "Accept": (
                     "text/html,application/xhtml+xml,"
                     "application/xml;q=0.9,*/*;q=0.8"
                 ),
             }
         )
+        self.robots = RobotsPolicy(self.session, configured_user_agent)
+        self.skipped: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # URL helpers
@@ -51,11 +54,23 @@ class DomainCrawler:
 
     @staticmethod
     def _get_root(url: str) -> str:
-        """Extract ``scheme://hostname`` from *url* using ``urlparse``."""
+        """Extract the scheme/host/port origin from *url*."""
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             return ""
-        return f"{parsed.scheme}://{parsed.hostname}"
+        host = parsed.hostname
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        port = f":{parsed.port}" if parsed.port else ""
+        return f"{parsed.scheme}://{host}{port}"
+
+    def _allowed(self, url: str) -> bool:
+        """Check robots and record only a non-sensitive skip reason."""
+        decision = self.robots.check(url)
+        if not decision.allowed:
+            self.skipped[decision.reason] = self.skipped.get(decision.reason, 0) + 1
+        return decision.allowed
+
 
     @staticmethod
     def _is_internal_url(url: str, root: str) -> bool:
@@ -82,29 +97,18 @@ class DomainCrawler:
 
         Returns a list of sitemap URLs (possibly empty).
         """
-        sitemaps: list[str] = []
+        sitemaps: list[str] = list(self.robots.sitemaps(root))
+        sitemaps = [
+            url for url in sitemaps if self._is_internal_url(url, root)
+        ]
+        if sitemaps:
+            return sitemaps
 
-        # 1. Try robots.txt
-        robots_url = f"{root.rstrip('/')}/robots.txt"
-        try:
-            resp = self.session.get(robots_url, timeout=15)
-            resp.raise_for_status()
-            for line in resp.text.splitlines():
-                line = line.strip()
-                if line.lower().startswith("sitemap:"):
-                    parts = line.split(":", 1)
-                    if len(parts) == 2:
-                        url = parts[1].strip()
-                        if url and self._is_internal_url(url, root):
-                            sitemaps.append(url)
-            if sitemaps:
-                return sitemaps
-        except requests.RequestException:
-            pass
-
-        # 2. Fall back to common sitemap paths
+        # Fall back to common sitemap paths, but obey robots for each one.
         for path in ("/sitemap.xml", "/sitemap_index.xml"):
             url = f"{root.rstrip('/')}{path}"
+            if not self._allowed(url):
+                continue
             try:
                 resp = self.session.get(url, timeout=15)
                 resp.raise_for_status()
@@ -126,6 +130,8 @@ class DomainCrawler:
 
         Returns a list of page URLs found in the sitemap.
         """
+        if not self._allowed(url):
+            return []
         try:
             resp = self.session.get(url, timeout=30)
             resp.raise_for_status()
@@ -196,6 +202,9 @@ class DomainCrawler:
                 continue
             visited.add(current)
 
+            if not self._allowed(current):
+                continue
+
             try:
                 resp = self.session.get(current, timeout=30)
                 resp.raise_for_status()
@@ -212,8 +221,8 @@ class DomainCrawler:
                 clean = link.split("#")[0]
                 if clean in visited or clean in frontier:
                     continue
-                # Keep only internal links (same root)
-                if self._is_internal_url(clean, root_norm):
+                # Keep only internal links (same root) and robots-allowed URLs.
+                if self._is_internal_url(clean, root_norm) and self._allowed(clean):
                     frontier.append(clean)
 
             if len(discovered) >= max_pages:
@@ -275,6 +284,7 @@ class DomainCrawler:
                 page_url
                 for page_url in urls_to_fetch
                 if self._is_internal_url(page_url, root)
+                and self._allowed(page_url)
             )
         )[:max_pages]
 
@@ -289,6 +299,8 @@ class DomainCrawler:
         for page_url in urls_to_fetch:
             if pages_fetched >= max_pages:
                 break
+            if not self._allowed(page_url):
+                continue
 
             try:
                 resp = self.session.get(page_url, timeout=30)
@@ -342,4 +354,6 @@ class DomainCrawler:
             "urls_discovered": len(urls_to_fetch),
             "pages_fetched": pages_fetched,
             "errors": errors,
+            "robots_skipped": sum(self.skipped.values()),
+            "robots_skip_reasons": dict(self.skipped),
         }

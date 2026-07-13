@@ -116,6 +116,17 @@ or against an attacker who obtains both the database and its key. SQLCipher is
 an optional native dependency, so encrypted mode requires a compatible wheel
 or local build for the target Python and platform.
 
+## Responsible crawling and privacy
+
+Sift honors each origin's `robots.txt` for crawl URLs, sitemap URLs, search
+results, and followed links using its configured User-Agent. Robots policies
+are cached for a bounded period to avoid repeated policy requests. A missing,
+unreachable, non-successful, or malformed `robots.txt` is treated
+conservatively: Sift skips the origin instead of silently bypassing exclusions.
+Only skip counts and short reasons are reported; robots response contents are
+not stored in the Sift database or printed by default. Sift does not provide a
+robots override by default.
+
 ## Development
 
 Run tests:
