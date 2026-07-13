@@ -20,6 +20,8 @@ class CurationError(RuntimeError):
 
 @dataclass
 class RawCapture:
+    """Immutable raw query capture plus provenance digest."""
+
     path: Path
     metadata: dict[str, Any]
     body: str
@@ -27,7 +29,9 @@ class RawCapture:
 
 
 @dataclass
+# pylint: disable=too-many-instance-attributes
 class CurationPlan:
+    """Deterministic file and metadata changes for one raw capture."""
     source: RawCapture
     title: str
     page_type: str

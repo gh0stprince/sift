@@ -21,7 +21,7 @@ def make_vault(tmp_path: Path) -> tuple[Path, Path]:
     return vault, raw
 
 
-def synth(capture):
+def synth(_capture):
     return {"title": "X concept", "type": "concept", "body": "X is useful.",
             "links": ["related concept"], "claims": []}
 
