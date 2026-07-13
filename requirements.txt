@@ -7,3 +7,5 @@ httpx>=0.28.0
 click>=8.0.0
 pytest>=8.0.0
 python-dotenv>=1.0.0
+# Optional: install with `pip install -e .[encrypted]` for SQLCipher support.
+# sqlcipher3>=0.6.2

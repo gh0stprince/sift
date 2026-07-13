@@ -13,6 +13,9 @@ setup(
         "httpx>=0.28.0",
         "click>=8.0.0",
     ],
+    extras_require={
+        "encrypted": ["sqlcipher3>=0.6.2"],
+    },
     entry_points={
         "console_scripts": [
             "sift=sift.cli:main",
