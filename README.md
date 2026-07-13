@@ -14,7 +14,7 @@ real sources.
 - **Pulse** — Recursive research: discover content by following links from search results
 - **Feeds** — Ingest and index RSS/Atom feeds (Lobsters, Hacker News, ArXiv, etc.)
 - **Ask** — Get AI-synthesized answers with inline citations from search results
-- **Wiki** — Save research outputs directly to your LLM wiki (planned, currently giving garbage output)
+- **Wiki** — Save research outputs to immutable raw captures, then curate approved concepts/entities with provenance and links
 
 ## Installation
 
@@ -72,6 +72,24 @@ sift ask "Latest LLM benchmarks" --wiki llm-benchmarks-2024
 ```
 
 The `--wiki` flag saves the raw results to `~/llm-wiki/raw/queries/<slug>.md`.
+
+### Automatic curation
+
+Preview and write approved pages without changing raw captures:
+
+```bash
+sift curate --dry-run
+sift curate
+```
+
+Curation requires the vault contract files (`10-system/11-meta/11.01 SCHEMA.md`,
+`11.02 index.md`, and `11.03 log.md`). It writes concepts to
+`20-knowledge-tech/21-ai-concepts/` and entities to `40-entities/`, records the
+raw capture SHA-256/query provenance, and uses atomic file replacement. Existing
+pages are appended to rather than silently overwritten. Re-running the command
+is idempotent. Set `SIFT_CURATE_URL` (and optionally `SIFT_CURATE_MODEL` and
+`SIFT_CURATE_API_KEY`) for an OpenAI-compatible private endpoint; without an
+endpoint a deterministic, non-LLM curation fallback is used.
 
 ### View statistics
 
