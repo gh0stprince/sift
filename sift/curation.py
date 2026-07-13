@@ -65,10 +65,13 @@ class EndpointSynthesizer:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        response = httpx.post(self.url, json=payload, headers=headers, timeout=120)
-        response.raise_for_status()
-        data = response.json()
-        text = data["choices"][0]["message"]["content"]
+        try:
+            response = httpx.post(self.url, json=payload, headers=headers, timeout=120)
+            response.raise_for_status()
+            data = response.json()
+            text = data["choices"][0]["message"]["content"]
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+            raise CurationError(f"curation provider failed: {exc}") from exc
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
@@ -96,7 +99,7 @@ def read_capture(path: Path) -> RawCapture:
     raw = path.read_bytes()
     text = raw.decode("utf-8")
     metadata, body = _parse_frontmatter(text)
-    metadata["source_urls"] = list(dict.fromkeys(re.findall(r"https?://[^\\s\\)\\]>]+", text)))
+    metadata["source_urls"] = list(dict.fromkeys(re.findall(r"https?://[^\s\)\]>]+", text)))
     return RawCapture(path, metadata, body, hashlib.sha256(raw).hexdigest())
 
 
@@ -149,9 +152,15 @@ def plan_curation(raw_dir: Path, vault: Path, synthesizer: Callable[[RawCapture]
     log = vault / "10-system" / "11-meta" / "11.03 log.md"
     if not schema.exists() or not index.exists() or not log.exists():
         raise CurationError("vault schema, index, and log are all required")
+    schema_text = schema.read_text(encoding="utf-8")
+    if "frontmatter" not in schema_text.lower() or "workflow" not in schema_text.lower():
+        raise CurationError("vault schema does not describe required frontmatter/workflow conventions")
+    index.read_text(encoding="utf-8")
+    log.read_text(encoding="utf-8")
     synth = synthesizer or EndpointSynthesizer()
     existing = _existing_pages(vault)
     plans = []
+    seen_slugs: set[str] = set()
     for path in sorted(raw_dir.glob("*.md")):
         capture = read_capture(path)
         result = synth(capture)
@@ -159,6 +168,9 @@ def plan_curation(raw_dir: Path, vault: Path, synthesizer: Callable[[RawCapture]
         if page_type not in {"concept", "entity"} or not result.get("title") or not result.get("body"):
             raise CurationError(f"provider result for {path.name} is missing a concept/entity title/body")
         slug = slugify(str(result["title"]))
+        if slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
         links = sorted({slugify(str(link)) for link in result.get("links", []) if slugify(str(link)) and slugify(str(link)) != slug})
         conflicts = [str(item) for item in result.get("conflicts", result.get("claims", [])) if str(item).strip()]
         target = existing.get(slug)
@@ -178,8 +190,10 @@ def plan_curation(raw_dir: Path, vault: Path, synthesizer: Callable[[RawCapture]
 
 
 def apply_curation(plans: list[CurationPlan], vault: Path, dry_run: bool = False) -> dict[str, Any]:
-    actions = {"created": [], "updated": [], "unchanged": [], "links": [], "conflicts": []}
+    actions = {"created": [], "updated": [], "unchanged": [], "files": [], "links": [], "conflicts": []}
     for plan in plans:
+        target = plan.target or vault / ("40-entities" if plan.page_type == "entity" else "20-knowledge-tech/21-ai-concepts") / f"{plan.slug}.md"
+        actions["files"].append(str(target.relative_to(vault)))
         action = "unchanged" if not plan.changed else ("updated" if plan.target else "created")
         actions[action].append(plan.slug)
         actions["links"].extend(f"{plan.slug} -> {link}" for link in plan.links)

@@ -38,10 +38,13 @@ def main(ctx, db, encrypted):
     First time? Run: sift feeds init && sift ingest
     Then try: sift ask "your research question"
     """
+    ctx.ensure_object(dict)
+    if ctx.invoked_subcommand == "curate":
+        ctx.obj["db"] = None
+        return
     from sift.db import DB
 
     resolved = Path(db).resolve() if db else None
-    ctx.ensure_object(dict)
     try:
         ctx.obj["db"] = DB(db_path=resolved, encrypted=encrypted)
     except Exception as exc:
@@ -214,7 +217,7 @@ def curate(raw_dir, vault, dry_run, provider_url, model):
         raise click.ClickException(str(exc)) from exc
     mode = "Preview" if dry_run else "Curated"
     click.echo(f"{mode} {len(plans)} capture(s)")
-    for key in ("created", "updated", "unchanged", "links", "conflicts"):
+    for key in ("created", "updated", "unchanged", "files", "links", "conflicts"):
         values = result[key]
         click.echo(f"  {key}: {len(values)}")
         for value in values:

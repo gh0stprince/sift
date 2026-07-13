@@ -10,7 +10,7 @@ def make_vault(tmp_path: Path) -> tuple[Path, Path]:
     vault = tmp_path / "vault"
     meta = vault / "10-system" / "11-meta"
     meta.mkdir(parents=True)
-    (meta / "11.01 SCHEMA.md").write_text("schema", encoding="utf-8")
+    (meta / "11.01 SCHEMA.md").write_text("Frontmatter workflow schema", encoding="utf-8")
     (meta / "11.02 index.md").write_text("# Index\n", encoding="utf-8")
     (meta / "11.03 log.md").write_text("# Log\n", encoding="utf-8")
     raw = vault / "raw" / "queries"
