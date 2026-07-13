@@ -38,10 +38,13 @@ def main(ctx, db, encrypted):
     First time? Run: sift feeds init && sift ingest
     Then try: sift ask "your research question"
     """
+    ctx.ensure_object(dict)
+    if ctx.invoked_subcommand == "curate":
+        ctx.obj["db"] = None
+        return
     from sift.db import DB
 
     resolved = Path(db).resolve() if db else None
-    ctx.ensure_object(dict)
     try:
         ctx.obj["db"] = DB(db_path=resolved, encrypted=encrypted)
     except Exception as exc:
@@ -188,20 +191,41 @@ def stats(ctx):
     click.echo(f"  newest_page:    {s['newest_page'] or 'never'}")
 
 
-def _show_raw_results(items, *, header=None, text_key="excerpt"):
-    """Display raw search/index results — eliminates 4 duplicated blocks.
+@main.command()
+@click.option("--raw-dir", type=click.Path(path_type=Path, exists=True, file_okay=False),
+              default=None, help="Raw query directory (default: ~/llm-wiki/raw/queries)")
+@click.option("--vault", type=click.Path(path_type=Path, file_okay=False),
+              default=None, help="Wiki vault root (default: ~/llm-wiki)")
+@click.option("--dry-run", is_flag=True, help="Preview files, updates, links, and conflicts without writing")
+@click.option("--provider-url", default=None, help="OpenAI-compatible curation endpoint")
+@click.option("--model", default=None, help="Curation model name")
+def curate(raw_dir, vault, dry_run, provider_url, model):
+    """Curate raw query captures into idempotent concept/entity wiki pages."""
+    from sift.curation import CurationError, EndpointSynthesizer, apply_curation, plan_curation
 
-    Parameters
-    ----------
-    items : list[dict]
-        Each dict must have ``'title'`` and ``'url'``; the text-content
-        field is given by *text_key*.
-    header : str or None
-        Optional header printed with dim styling before the results.
-    text_key : str
-        The dict key holding the textual excerpt or body
-        (``\"excerpt\"`` for index results, ``\"body\"`` for snippet results).
-    """
+    vault_path = vault or Path.home() / "llm-wiki"
+    raw_path = raw_dir or vault_path / "raw" / "queries"
+    if raw_dir is None and not raw_path.exists():
+        legacy_raw = vault_path / "80-raw" / "82-queries"
+        if legacy_raw.exists():
+            raw_path = legacy_raw
+    try:
+        plans = plan_curation(raw_path, vault_path,
+                              EndpointSynthesizer(url=provider_url, model=model))
+        result = apply_curation(plans, vault_path, dry_run=dry_run)
+    except CurationError as exc:
+        raise click.ClickException(str(exc)) from exc
+    mode = "Preview" if dry_run else "Curated"
+    click.echo(f"{mode} {len(plans)} capture(s)")
+    for key in ("created", "updated", "unchanged", "files", "links", "conflicts"):
+        values = result[key]
+        click.echo(f"  {key}: {len(values)}")
+        for value in values:
+            click.echo(f"    - {value}")
+
+
+def _show_raw_results(items, *, header=None, text_key="excerpt"):
+    """Display raw search/index results."""
     if header:
         click.secho(header, dim=True)
     for r in items:
