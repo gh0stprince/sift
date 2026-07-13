@@ -218,7 +218,7 @@ def plan_curation(raw_dir: Path, vault: Path, synthesizer: Callable[[RawCapture]
             else:
                 conflicts.append(f"Existing page {target.name} has prior claims; appended, not overwritten")
                 content = (existing_text.rstrip() + "\n\n## Sift curation update\n\n"
-                           + str(result["body"]).strip() + "\n\n"
+                           + _normalize_markdown(str(result["body"])) + "\n\n"
                            + f"Source hash: `{capture.digest}`\n")
         plans.append(CurationPlan(capture, str(result["title"]), page_type, slug,
                                   content, links, conflicts, target))

@@ -66,6 +66,10 @@ def test_existing_page_is_appended_not_overwritten(tmp_path):
     assert "Original claim." in plan.content
     assert "X is useful." in plan.content
     assert plan.conflicts
+    wrapped_plan = plan_curation(raw, vault, lambda _capture: {
+        "title": "X concept", "type": "concept", "body": "Wrapped claim\ncontinues here.",
+        "links": [], "claims": []})[0]
+    assert "Wrapped claim continues here." in wrapped_plan.content
 
 
 def test_file_input_processes_only_selected_capture(tmp_path):
