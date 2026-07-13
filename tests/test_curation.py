@@ -1,9 +1,11 @@
 """Filesystem-safe tests for automatic curation."""
 from pathlib import Path
 
+from click.testing import CliRunner
 import pytest
 
-from sift.curation import CurationError, apply_curation, plan_curation
+from sift.cli import main
+from sift.curation import CurationError, _normalize_markdown, apply_curation, plan_curation
 
 
 def make_vault(tmp_path: Path) -> tuple[Path, Path]:
@@ -64,3 +66,31 @@ def test_existing_page_is_appended_not_overwritten(tmp_path):
     assert "Original claim." in plan.content
     assert "X is useful." in plan.content
     assert plan.conflicts
+    wrapped_plan = plan_curation(raw, vault, lambda _capture: {
+        "title": "X concept", "type": "concept", "body": "Wrapped claim\ncontinues here.",
+        "links": [], "claims": []})[0]
+    assert "Wrapped claim continues here." in wrapped_plan.content
+
+
+def test_file_input_processes_only_selected_capture(tmp_path):
+    vault, raw = make_vault(tmp_path)
+    sibling = raw / "sibling.md"
+    sibling.write_text('---\ntitle: Sibling\n---\n\nSibling body.\n', encoding="utf-8")
+    result = CliRunner().invoke(main, ["curate", "--file", str(raw / "query.md"),
+                                        "--vault", str(vault), "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "Preview 1 capture(s)" in result.output
+    assert "sibling" not in result.output.lower()
+
+
+def test_normalize_markdown_joins_only_wrapped_prose():
+    source = ("A wrapped paragraph\ncontinues with `inline code`.\n\n"
+              "# Heading\n\n- list item\n  continuation\n\n"
+              "> quoted\n> text\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n"
+              "```python\nvalue = 1\nvalue += 1\n```\n\n"
+              "A hard break  \ncontinues.")
+    assert _normalize_markdown(source) == ("A wrapped paragraph continues with `inline code`.\n\n"
+                                           "# Heading\n\n- list item\n  continuation\n\n"
+                                           "> quoted\n> text\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n"
+                                           "```python\nvalue = 1\nvalue += 1\n```\n\n"
+                                           "A hard break  \ncontinues.")
