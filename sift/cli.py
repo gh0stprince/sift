@@ -30,7 +30,7 @@ def main(ctx, db):
 
     Search, explore, and analyze web content through RSS feeds,
     recursive research pulses, and full-text search.
-
+    \\b
     First time? Run: sift feeds init && sift ingest
     Then try: sift ask "your research question"
     """
