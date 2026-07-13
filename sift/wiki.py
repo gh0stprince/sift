@@ -2,93 +2,11 @@
 
 from __future__ import annotations
 
-import json
-import os
 import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-import httpx
-
 WIKI_RAW_DIR = Path.home() / "llm-wiki" / "raw" / "queries"
-
-# API config for cleanup pass
-CLEANUP_API_URL = (
-    os.environ.get("OPENAI_BASE_URL")
-    or "https://opencode.ai/zen/go/v1/chat/completions"
-)
-CLEANUP_API_KEY = (
-    os.environ.get("OPENAI_API_KEY")
-    or os.environ.get("OPENCODE_GO_API_KEY")
-    or os.environ.get("AUXILIARY_APPROVAL_API_KEY")
-)
-CLEANUP_MODEL = (
-    os.environ.get("OPENAI_MODEL")
-    or os.environ.get("AUXILIARY_APPROVAL_MODEL")
-    or "qwen3.7-plus"
-)
-
-
-def cleanup_with_llm(raw_synthesis: str, query: str) -> tuple[str, str]:
-    """Use LLM to extract clean answer and summary from raw synthesis.
-
-    Returns (clean_answer, one_line_summary).
-    """
-    if not CLEANUP_API_KEY:
-        # Fallback: return raw synthesis as-is
-        return raw_synthesis, ""
-
-    system_prompt = (
-        "You are a document cleaner. Your job is to extract ONLY the final "
-        "answer from a research synthesis that may contain thinking steps.\n\n"
-        "Rules:\n"
-        "1. Remove ALL thinking, analysis, planning, and reasoning steps\n"
-        "2. Remove numbered steps like '1. **Analyze**', '2. **Synthesize**'\n"
-        "3. Keep only the actual answer paragraphs\n"
-        "4. Preserve inline citations [1], [2], etc.\n"
-        "5. Generate a one-line summary (max 100 chars) of the key finding\n\n"
-        "Output format:\n"
-        "SUMMARY: <one line summary>\n"
-        "---\n"
-        "<clean answer here>"
-    )
-
-    user_prompt = f"Query: {query}\n\nRaw synthesis:\n{raw_synthesis}"
-
-    headers = {
-        "Authorization": f"Bearer {CLEANUP_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": CLEANUP_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.2,
-        "max_tokens": 2048,
-    }
-
-    try:
-        resp = httpx.post(CLEANUP_API_URL, json=payload, headers=headers, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
-        content = data["choices"][0]["message"].get("content", "")
-
-        # Parse SUMMARY: ... --- ... format
-        if "SUMMARY:" in content and "---" in content:
-            parts = content.split("---", 1)
-            summary = parts[0].replace("SUMMARY:", "").strip()
-            clean = parts[1].strip()
-            return clean, summary
-
-        # Fallback: return everything as answer
-        return content, ""
-
-    except Exception:
-        # On any error, return raw synthesis
-        return raw_synthesis, ""
 
 
 def slugify(text: str, max_len: int = 60) -> str:
@@ -203,11 +121,9 @@ def write_raw_source(
     today = date.today().isoformat()
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    # Run LLM cleanup pass to get clean answer and summary
-    clean_answer, summary = cleanup_with_llm(synthesis, query)
-
-    # Also try local split as fallback content for reasoning section
-    _, reasoning = split_answer_reasoning(synthesis)
+    # Use local split to extract answer from reasoning (avoids extra LLM call)
+    clean_answer, reasoning = split_answer_reasoning(synthesis)
+    summary = ""
 
     # Build body - use LLM-cleaned answer
     body = clean_answer
@@ -239,10 +155,7 @@ ingested: {today}
 
     # Add raw reasoning as appendix if present
     if reasoning:
-        body += (
-            f"\n\n<details>\n<summary>Raw reasoning (model thinking)</summary>\n\n"
-            f"{reasoning}\n</details>"
-        )
+        body += f"\n\n<details>\n<summary>Raw reasoning (model thinking)</summary>\n\n{reasoning}\n</details>"
 
     if sources:
         body += "\n\n## Sources\n\n"
