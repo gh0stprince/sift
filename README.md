@@ -80,10 +80,13 @@ Preview and write approved pages without changing raw captures:
 ```bash
 sift curate --dry-run
 sift curate
+sift curate --file ~/llm-wiki/raw/queries/example.md --dry-run
 ```
 
 Curation requires the vault contract files (`10-system/11-meta/11.01 SCHEMA.md`,
-`11.02 index.md`, and `11.03 log.md`). It writes concepts to
+`11.02 index.md`, and `11.03 log.md`). Use `--file` for one Markdown capture or
+`--raw-dir` for directory mode; the options are mutually exclusive. Dry runs never
+write curated pages or modify raw captures. It writes concepts to
 `20-knowledge-tech/21-ai-concepts/` and entities to `40-entities/`, records the
 raw capture SHA-256/query provenance, and uses atomic file replacement. Existing
 pages are appended to rather than silently overwritten. Re-running the command

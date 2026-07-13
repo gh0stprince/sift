@@ -130,11 +130,39 @@ def _page_content(result: dict[str, Any], capture: RawCapture, links: list[str],
                   f"    sha256: {capture.digest}"]
     if conflicts:
         lines += ["contradictions:"] + [f'  - claim: "{item.replace(chr(34), chr(39))}"\n    resolution: pending' for item in conflicts]
-    lines += ["---", "", f"# {title}", "", str(result.get("body", "")).strip(), "", "## Sources", "",
+    lines += ["---", "", f"# {title}", "", _normalize_markdown(str(result.get("body", ""))), "", "## Sources", "",
               f"- Raw capture: `raw/queries/{capture.path.name}`", f"- Query: `{capture.metadata.get('source_query', '')}`"]
     if links:
         lines += ["", "## Related", ""] + [f"- [[{link}]]" for link in links]
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _normalize_markdown(text: str) -> str:
+    """Join wrapped prose while leaving Markdown block structure safe."""
+    lines = text.strip().splitlines()
+    output: list[str] = []
+    in_fence = False
+
+    def is_structural(line: str) -> bool:
+        stripped = line.lstrip()
+        return (not stripped or stripped.startswith(("#", "- ", "* ", "+ ", ">", "```", "~~~", "|"))
+                or bool(re.match(r"\d+[.)]\s", stripped)))
+
+    for line in lines:
+        fence = line.lstrip().startswith(("```", "~~~"))
+        if fence:
+            in_fence = not in_fence
+            output.append(line)
+            continue
+        if in_fence or not output or is_structural(line) or is_structural(output[-1]):
+            output.append(line)
+            continue
+        previous = output[-1]
+        if previous.endswith("\\") or previous.endswith("  "):
+            output.append(line)
+        else:
+            output[-1] = previous.rstrip() + " " + line.strip()
+    return "\n".join(output)
 
 
 def _existing_pages(vault: Path) -> dict[str, Path]:
@@ -161,7 +189,15 @@ def plan_curation(raw_dir: Path, vault: Path, synthesizer: Callable[[RawCapture]
     existing = _existing_pages(vault)
     plans = []
     seen_slugs: set[str] = set()
-    for path in sorted(raw_dir.glob("*.md")):
+    if raw_dir.is_file():
+        if raw_dir.suffix.lower() != ".md":
+            raise CurationError("curation input must be a Markdown file")
+        capture_paths = [raw_dir]
+    elif raw_dir.is_dir():
+        capture_paths = sorted(raw_dir.glob("*.md"))
+    else:
+        raise CurationError(f"curation input does not exist: {raw_dir}")
+    for path in capture_paths:
         capture = read_capture(path)
         result = synth(capture)
         page_type = str(result.get("type", "concept")).lower()

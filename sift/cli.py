@@ -194,18 +194,25 @@ def stats(ctx):
 @main.command()
 @click.option("--raw-dir", type=click.Path(path_type=Path, exists=True, file_okay=False),
               default=None, help="Raw query directory (default: ~/llm-wiki/raw/queries)")
+@click.option("--file", "raw_file", type=click.Path(path_type=Path, exists=True, dir_okay=False),
+              default=None, help="Curate exactly one raw Markdown capture")
 @click.option("--vault", type=click.Path(path_type=Path, file_okay=False),
               default=None, help="Wiki vault root (default: ~/llm-wiki)")
 @click.option("--dry-run", is_flag=True, help="Preview files, updates, links, and conflicts without writing")
 @click.option("--provider-url", default=None, help="OpenAI-compatible curation endpoint")
 @click.option("--model", default=None, help="Curation model name")
-def curate(raw_dir, vault, dry_run, provider_url, model):
+def curate(raw_dir, raw_file, vault, dry_run, provider_url, model):
     """Curate raw query captures into idempotent concept/entity wiki pages."""
     from sift.curation import CurationError, EndpointSynthesizer, apply_curation, plan_curation
 
     vault_path = vault or Path.home() / "llm-wiki"
+    if raw_dir is not None and raw_file is not None:
+        raise click.UsageError("--file and --raw-dir are mutually exclusive")
+    if raw_file is not None and raw_file.suffix.lower() != ".md":
+        raise click.BadParameter("must be a Markdown file", param_hint="--file")
     raw_path = raw_dir or vault_path / "raw" / "queries"
-    if raw_dir is None and not raw_path.exists():
+    raw_path = raw_file or raw_path
+    if raw_dir is None and raw_file is None and not raw_path.exists():
         legacy_raw = vault_path / "80-raw" / "82-queries"
         if legacy_raw.exists():
             raw_path = legacy_raw
