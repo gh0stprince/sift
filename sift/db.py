@@ -56,7 +56,7 @@ def _key_pragma(key):
         raise DatabaseError("Database key must not contain NUL characters")
     # SQLCipher's PRAGMA key syntax does not accept DB-API parameters.
     escaped = key.replace("'", "''")
-    return "PRAGMA key = '{}'".format(escaped)
+    return f"PRAGMA key = '{escaped}'"
 
 
 class DB:
