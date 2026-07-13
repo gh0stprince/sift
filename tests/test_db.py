@@ -163,3 +163,48 @@ def test_search_fresh_boost():
     assert fresh_urls != normal_urls, "Fresh boost should change ordering"
 
     db.close()
+
+
+def test_encrypted_create_open_and_search(tmp_path):
+    """SQLCipher stores searchable content without plaintext SQLite records."""
+    path = tmp_path / "encrypted.db"
+    db = DB(path, encrypted=True, key="test-key")
+    db.add_page("https://secret.example", "Secret title", "classified research text")
+    db.close()
+
+    raw = path.read_bytes()
+    assert b"classified research text" not in raw
+    reopened = DB(path, encrypted=True, key="test-key")
+    assert reopened.search("classified")[0]["url"] == "https://secret.example"
+    reopened.close()
+
+
+def test_encrypted_mode_requires_key(tmp_path):
+    """Encrypted mode must fail before creating or opening a database."""
+    with pytest.raises(Exception, match="SIFT_DB_KEY"):
+        DB(tmp_path / "missing.db", encrypted=True, key="")
+
+
+def test_encrypted_mode_rejects_wrong_key(tmp_path):
+    """A wrong key is an actionable failure, never a plaintext fallback."""
+    path = tmp_path / "encrypted.db"
+    db = DB(path, encrypted=True, key="correct-key")
+    db.add_page("https://example.com", "Title", "content")
+    db.close()
+    with pytest.raises(Exception, match="check the database key"):
+        DB(path, encrypted=True, key="wrong-key")
+
+
+def test_explicit_plaintext_migration(tmp_path):
+    """Migration copies data to a new encrypted file and preserves the source."""
+    source_path = tmp_path / "plain.db"
+    destination_path = tmp_path / "encrypted.db"
+    source = DB(source_path)
+    source.add_page("https://example.com", "Migrated", "migration content")
+    source.close()
+
+    DB.migrate_plaintext(source_path, destination_path, "migration-key")
+    assert source_path.read_bytes().startswith(b"SQLite format 3")
+    encrypted = DB(destination_path, encrypted=True, key="migration-key")
+    assert encrypted.search("migration")[0]["title"] == "Migrated"
+    encrypted.close()

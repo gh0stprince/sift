@@ -24,8 +24,12 @@ DEFAULT_FEEDS = [
 
 @click.group(invoke_without_command=True)
 @click.option("--db", "-d", type=click.Path(), default=None, help="Path to sift database")
+@click.option(
+    "--encrypted", is_flag=True,
+    help="Open the database with SQLCipher using SIFT_DB_KEY (never falls back)",
+)
 @click.pass_context
-def main(ctx, db):
+def main(ctx, db, encrypted):
     """Sift — AI-powered web research tool.
 
     Search, explore, and analyze web content through RSS feeds,
@@ -39,7 +43,7 @@ def main(ctx, db):
     resolved = Path(db).resolve() if db else None
     ctx.ensure_object(dict)
     try:
-        ctx.obj["db"] = DB(db_path=resolved)
+        ctx.obj["db"] = DB(db_path=resolved, encrypted=encrypted)
     except Exception as exc:
         click.secho(f"Error initializing database: {exc}", fg="red", err=True)
         ctx.exit(1)

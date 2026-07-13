@@ -83,9 +83,38 @@ sift stats
 
 Sift stores data in a local SQLite database:
 - Default location: `~/.sift/sift.db`
-- Custom path: `sift --db /path/to/db.db <command>`
+Custom path: `sift --db /path/to/db.db <command>`
 
 Data directories are automatically gitignored (see `.gitignore`).
+
+### Optional encrypted storage
+
+Encrypted storage uses SQLCipher and is opt-in; normal Sift databases remain
+standard SQLite. Install the extra and provide the key out-of-band:
+
+```bash
+pip install -e '.[encrypted]'
+export SIFT_DB_KEY='a-long-random-passphrase'
+sift --encrypted --db ~/.sift/private.db search "transformer architecture"
+```
+
+Sift never writes the key to the database, source files, `.env` files, logs,
+exceptions, or command output. `--encrypted` fails closed when `SIFT_DB_KEY`
+is missing or incorrect and never falls back to plaintext. SQLCipher databases
+use DELETE journaling and in-memory temporary storage to avoid unencrypted WAL,
+SHM, and temp sidecar files. Close Sift cleanly before copying a backup; keep
+the key separate from backups because losing it makes the data unrecoverable.
+
+To migrate an existing plaintext database, use the explicit API (which leaves
+the source untouched): `DB.migrate_plaintext(source, destination, key)` from
+Python. Verify the encrypted destination opens with `SIFT_DB_KEY` before
+removing the original. Migration does not securely erase the plaintext source.
+
+The threat model covers an offline attacker who obtains the database file; it
+does not protect data while the process is running, against a compromised host,
+or against an attacker who obtains both the database and its key. SQLCipher is
+an optional native dependency, so encrypted mode requires a compatible wheel
+or local build for the target Python and platform.
 
 ## Development
 
