@@ -6,9 +6,10 @@ import json
 import logging
 import time
 import warnings
+from collections import deque
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import requests
 import trafilatura
@@ -71,6 +72,7 @@ class PulseEngine:
         session=None,
         resolver=None,
         ddgs=None,
+        sleeper=time.sleep,
     ) -> None:
         self.db = db
         self.session = session or requests.Session()
@@ -88,6 +90,7 @@ class PulseEngine:
         )
         self.robots_skipped: dict[str, int] = {}
         self.ddgs = ddgs or DDGS()
+        self.sleeper = sleeper
 
     def close(self) -> None:
         """Release the Pulse HTTP session."""
@@ -273,6 +276,38 @@ class PulseEngine:
     # Main run method
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _normalize_url(url: str) -> str | None:
+        """Return a fragment-free canonical HTTP(S) URL for deduplication."""
+        try:
+            parsed = urlsplit(url)
+            port = parsed.port
+        except (TypeError, ValueError):
+            return None
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+            return None
+        if parsed.username is not None or parsed.password is not None:
+            return None
+        host = parsed.hostname.lower()
+        if ":" in host:
+            host = f"[{host}]"
+        default_port = (parsed.scheme.lower() == "http" and port == 80) or (
+            parsed.scheme.lower() == "https" and port == 443
+        )
+        netloc = host if port is None or default_port else f"{host}:{port}"
+        return urlunsplit(
+            (parsed.scheme.lower(), netloc, parsed.path or "/", parsed.query, "")
+        )
+
+    def _fetch_page(
+        self, url: str, pulse_id: int, link_depth: int
+    ) -> tuple[dict[str, Any] | None, list[str]]:
+        """Fetch/store one page and return its outgoing links without refetching."""
+        stored = self._fetch_and_store(url, pulse_id, link_depth=link_depth)
+        if stored is None:
+            return None, []
+        return stored, self._extract_links(stored.get("html", ""), url)
+
     def run(
         self, query: str, depth: int = 2, max_pages: int = 30
     ) -> dict[str, Any]:
@@ -284,13 +319,8 @@ class PulseEngine:
             ``{"pulse_id": id, "query": query,
                 "pages_found": n, "total_depth": depth}``
         """
-        # Step 1: Create pulse record
-        cur = self.db.conn.execute(
-            "INSERT INTO pulses (query, depth) VALUES (?, ?)",
-            (query, depth),
-        )
-        self.db.conn.commit()
-        pulse_id = cur.lastrowid
+        # Step 1: Create pulse record.
+        pulse_id = self.db.add_pulse(query, depth)
 
         # Step 2: Generate query variations
         variations = self._generate_query_variations(query)
@@ -301,7 +331,7 @@ class PulseEngine:
         for v in variations:
             results = self._search_ddg(v, max_results=10)
             for r in results:
-                u = r["url"]
+                u = self._normalize_url(r["url"])
                 if not u:
                     continue
                 if u in url_map:
@@ -318,48 +348,32 @@ class PulseEngine:
             url_map.items(), key=lambda x: x[1]["count"], reverse=True
         )
 
-        # Step 4: Phase 2 — fetch top 15 pages at depth 0
+        # Step 4: Breadth-first traversal. Depth zero is search-only; depth one
+        # fetches seed URLs; each higher value adds one outgoing-link level.
         pages_stored = 0
-        stored_pages: list[dict[str, Any]] = []
-
-        for url, _info in ranked[:15]:
-            if pages_stored >= max_pages:
-                break
-            result = self._fetch_and_store(url, pulse_id, link_depth=0)
-            if result is not None:
-                pages_stored += 1
-                stored_pages.append(result)
-            time.sleep(0.5)
-
-        # Step 5: Phase 3 — crawl depth-2 links from top 5 stored pages
-        if depth >= 2 and pages_stored < max_pages:
-            for stored in stored_pages[:5]:
-                if pages_stored >= max_pages:
-                    break
-                # Use stored HTML to extract links (already fetched in Phase 2)
-                html = stored.get("html")
-                if html is None:
+        seen = {url for url, _info in ranked}
+        queue = deque((url, 0) for url, _info in ranked)
+        while queue and pages_stored < max_pages:
+            url, link_depth = queue.popleft()
+            if link_depth >= depth:
+                continue
+            stored, links = self._fetch_page(url, pulse_id, link_depth)
+            if stored is None:
+                continue
+            pages_stored += 1
+            self.sleeper(0.5)
+            next_depth = link_depth + 1
+            if next_depth >= depth:
+                continue
+            for link in links:
+                normalized = self._normalize_url(link)
+                if normalized is None or normalized in seen:
                     continue
-                links = self._extract_links(html, stored["url"])
-                for link in links[:5]:
-                    if pages_stored >= max_pages:
-                        break
-                    if not self._allowed(link):
-                        continue
-                    result = self._fetch_and_store(
-                        link, pulse_id, link_depth=1
-                    )
-                    if result is not None:
-                        pages_stored += 1
-                    time.sleep(0.5)
+                seen.add(normalized)
+                queue.append((normalized, next_depth))
 
         # Step 6: Update pulse record
-        self.db.conn.execute(
-            "UPDATE pulses SET finished_at=datetime('now'),"
-            " pages_found=? WHERE id=?",
-            (pages_stored, pulse_id),
-        )
-        self.db.conn.commit()
+        self.db.finish_pulse(pulse_id, pages_stored)
 
         # Step 7: Return result
         return {
@@ -367,6 +381,7 @@ class PulseEngine:
             "query": query,
             "pages_found": pages_stored,
             "total_depth": depth,
+            "urls_discovered": len(seen),
             "robots_skipped": sum(self.robots_skipped.values()),
             "robots_skip_reasons": dict(self.robots_skipped),
         }

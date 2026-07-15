@@ -293,6 +293,23 @@ class DB:
         self.conn.commit()
         return cursor.lastrowid
 
+    def add_pulse(self, query, depth):
+        """Create a pulse record and return its stable identifier."""
+        cursor = self.conn.execute(
+            "INSERT INTO pulses (query, depth) VALUES (?, ?)", (query, depth)
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def finish_pulse(self, pulse_id, pages_found):
+        """Mark a pulse complete with its final global page count."""
+        self.conn.execute(
+            "UPDATE pulses SET finished_at=datetime('now'),"
+            " pages_found=? WHERE id=?",
+            (pages_found, pulse_id),
+        )
+        self.conn.commit()
+
     def search(self, query, limit=10, fresh=False):
         if not query or not query.strip() or limit < 1:
             return []
