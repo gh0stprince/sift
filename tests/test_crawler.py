@@ -12,6 +12,7 @@ import pytest
 
 from sift.crawler import DomainCrawler
 from sift.db import DB
+from sift.outbound import OutboundPolicy
 from sift.robots import RobotsPolicy
 
 
@@ -133,7 +134,11 @@ class TestDiscoverSitemaps:
         """Read Sitemap directives without making a live network request."""
         session = _RobotsSession()
         crawler.session = session  # type: ignore[assignment]
-        crawler.robots = RobotsPolicy(session, "Sift-Test/0.1")
+        crawler.robots = RobotsPolicy(
+            session,
+            "Sift-Test/0.1",
+            url_policy=OutboundPolicy(resolver=lambda _host: ["93.184.216.34"]),
+        )
         root = "https://example.com"
         sitemaps = crawler._discover_sitemaps(root)
         assert sitemaps == ["https://example.com/map.xml"]

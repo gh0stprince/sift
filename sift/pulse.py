@@ -17,6 +17,7 @@ import trafilatura
 warnings.filterwarnings("ignore", message=".*ddgs.*renamed.*")
 from ddgs import DDGS
 
+from sift.outbound import OutboundPolicy, safe_get
 from sift.robots import RobotsPolicy
 
 logger = logging.getLogger(__name__)
@@ -62,9 +63,17 @@ class PulseEngine:
         "www.instagram.com",
     })
 
-    def __init__(self, db: Any, user_agent: str | None = None) -> None:
+    def __init__(
+        self,
+        db: Any,
+        user_agent: str | None = None,
+        *,
+        session=None,
+        resolver=None,
+        ddgs=None,
+    ) -> None:
         self.db = db
-        self.session = requests.Session()
+        self.session = session or requests.Session()
         configured_user_agent = user_agent or "Sift/0.1.0 (+https://github.com/gh0st/sift)"
         self.session.headers.update({
             "User-Agent": configured_user_agent,
@@ -73,9 +82,22 @@ class PulseEngine:
                 "application/xml;q=0.9,*/*;q=0.8"
             ),
         })
-        self.robots = RobotsPolicy(self.session, configured_user_agent)
+        self.url_policy = OutboundPolicy(resolver=resolver)
+        self.robots = RobotsPolicy(
+            self.session, configured_user_agent, url_policy=self.url_policy
+        )
         self.robots_skipped: dict[str, int] = {}
-        self.ddgs = DDGS()
+        self.ddgs = ddgs or DDGS()
+
+    def close(self) -> None:
+        """Release the Pulse HTTP session."""
+        self.session.close()
+
+    def __enter__(self) -> PulseEngine:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
 
     # ------------------------------------------------------------------
     # Query variation generation
@@ -163,7 +185,13 @@ class PulseEngine:
 
         # Fetch the page
         try:
-            resp = self.session.get(url, timeout=30)
+            resp = safe_get(
+                self.session,
+                url,
+                policy=self.url_policy,
+                timeout=30,
+                authorize=self._allowed,
+            )
             resp.raise_for_status()
         except requests.RequestException:
             return None

@@ -10,6 +10,9 @@ from typing import Any
 import requests
 import trafilatura
 
+from sift.outbound import OutboundPolicy, safe_get
+from sift.robots import RobotsPolicy
+
 
 class FeedFetcher:
     """Fetches and parses RSS/Atom feeds, extracts page content via trafilatura.
@@ -23,18 +26,31 @@ class FeedFetcher:
         Custom User-Agent header value.  Falls back to a sensible default.
     """
 
-    def __init__(self, db_instance: Any, user_agent: str | None = None) -> None:
+    def __init__(
+        self,
+        db_instance: Any,
+        user_agent: str | None = None,
+        *,
+        session=None,
+        resolver=None,
+    ) -> None:
         self.db = db_instance
-        self.session = requests.Session()
+        self.session = session or requests.Session()
+        configured_user_agent = (
+            user_agent or "Sift/0.1.0 (+https://github.com/gh0st/sift)"
+        )
         self.session.headers.update(
             {
-                "User-Agent": user_agent
-                or "Sift/0.1.0 (+https://github.com/gh0st/sift)",
+                "User-Agent": configured_user_agent,
                 "Accept": (
                     "application/rss+xml, application/atom+xml,"
                     " text/xml, application/xml"
                 ),
             }
+        )
+        self.url_policy = OutboundPolicy(resolver=resolver)
+        self.robots = RobotsPolicy(
+            self.session, configured_user_agent, url_policy=self.url_policy
         )
 
     def close(self) -> None:
@@ -46,6 +62,10 @@ class FeedFetcher:
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.close()
+
+    def _allowed(self, url: str) -> bool:
+        """Apply public-network and robots policy to a feed or entry URL."""
+        return self.robots.allowed(url)
 
     # ------------------------------------------------------------------
     # Feed source management
@@ -69,7 +89,13 @@ class FeedFetcher:
         Returns a list of ``{"url": ..., "title": ...}`` dicts, one per
         item/entry found in the feed.
         """
-        resp = self.session.get(feed_url, timeout=30)
+        resp = safe_get(
+            self.session,
+            feed_url,
+            policy=self.url_policy,
+            timeout=30,
+            authorize=self._allowed,
+        )
         resp.raise_for_status()
         return self._parse_feed_xml(resp.text)
 
@@ -149,7 +175,13 @@ class FeedFetcher:
         when the page is unreachable or extraction fails.
         """
         try:
-            resp = self.session.get(url, timeout=30)
+            resp = safe_get(
+                self.session,
+                url,
+                policy=self.url_policy,
+                timeout=30,
+                authorize=self._allowed,
+            )
             resp.raise_for_status()
         except requests.RequestException:
             return None

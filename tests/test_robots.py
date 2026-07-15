@@ -7,6 +7,12 @@ from dataclasses import dataclass
 import requests
 
 from sift.robots import RobotsPolicy
+from sift.outbound import OutboundPolicy
+
+
+def public_policy() -> OutboundPolicy:
+    """Resolve deterministic test hosts to a documentation-only public IP."""
+    return OutboundPolicy(resolver=lambda _host: ["93.184.216.34"])
 
 
 @dataclass
@@ -38,7 +44,9 @@ def test_allow_overrides_disallow_and_wildcards() -> None:
         "User-agent: Sift\nDisallow: /private\nAllow: /private/public\n"
         "Disallow: /*.pdf$\n"
     ))
-    policy = RobotsPolicy(session, "Sift/0.1", refresh_seconds=60)
+    policy = RobotsPolicy(
+        session, "Sift/0.1", refresh_seconds=60, url_policy=public_policy()
+    )
 
     assert policy.allowed("https://example.test/private/public")
     assert not policy.allowed("https://example.test/private/secret?x=1")
@@ -49,7 +57,13 @@ def test_allow_overrides_disallow_and_wildcards() -> None:
 def test_policy_is_cached_until_bounded_refresh() -> None:
     now = [0.0]
     session = FakeSession(FakeResponse("User-agent: *\nDisallow: /nope\n"))
-    policy = RobotsPolicy(session, "Sift/0.1", refresh_seconds=10, clock=lambda: now[0])
+    policy = RobotsPolicy(
+        session,
+        "Sift/0.1",
+        refresh_seconds=10,
+        clock=lambda: now[0],
+        url_policy=public_policy(),
+    )
 
     assert not policy.allowed("https://example.test/nope")
     assert not policy.allowed("https://example.test/nope/again")
@@ -64,7 +78,9 @@ def test_policy_is_cached_until_bounded_refresh() -> None:
 
 def test_unavailable_and_malformed_robots_fail_closed() -> None:
     for response in (FakeResponse("", 503), FakeResponse("not robots syntax")):
-        policy = RobotsPolicy(FakeSession(response), "Sift/0.1")
+        policy = RobotsPolicy(
+            FakeSession(response), "Sift/0.1", url_policy=public_policy()
+        )
         decision = policy.check("https://example.test/anything")
         assert not decision.allowed
         assert decision.reason == "robots_unavailable"
@@ -74,7 +90,7 @@ def test_sitemap_directives_are_cached_and_exposed_without_content_logging() -> 
     session = FakeSession(FakeResponse(
         "User-agent: *\nAllow: /\nSitemap: https://example.test/map.xml\n"
     ))
-    policy = RobotsPolicy(session, "Sift/0.1")
+    policy = RobotsPolicy(session, "Sift/0.1", url_policy=public_policy())
 
     assert policy.sitemaps("https://example.test") == ("https://example.test/map.xml",)
     assert policy.cache_size() == 1

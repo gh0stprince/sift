@@ -105,6 +105,7 @@ def pulse(ctx, query, depth, max_pages):
 
     db = ctx.obj["db"]
     engine = PulseEngine(db)
+    ctx.call_on_close(engine.close)
     click.echo(
         f"🔍 Running pulse for '{query}'"
         f" (depth={depth}, max_pages={max_pages})..."
@@ -129,6 +130,7 @@ def feeds(ctx, action, args):
 
     db = ctx.obj["db"]
     fetcher = FeedFetcher(db)
+    ctx.call_on_close(fetcher.close)
 
     if action == "list":
         sources = fetcher.list_feeds()
@@ -168,6 +170,7 @@ def ingest(ctx, max_per_feed):
 
     db = ctx.obj["db"]
     fetcher = FeedFetcher(db)
+    ctx.call_on_close(fetcher.close)
     click.echo(f"📡 Ingesting up to {max_per_feed} entries per feed...")
     stats = fetcher.run_all(max_per_feed=max_per_feed)
     click.echo(
@@ -285,6 +288,7 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
         from sift.pulse import PulseEngine
         from sift.synthesize import build_context_from_snippets
         engine = PulseEngine(ctx.obj["db"])
+        ctx.call_on_close(engine.close)
         variations = engine._generate_query_variations(query)
 
         all_urls = {}
@@ -363,6 +367,7 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
     if not results:
         click.echo("No results in index. Running a quick pulse...")
         engine = PulseEngine(db)
+        ctx.call_on_close(engine.close)
         engine.run(query, depth=1, max_pages=10)
         results = db.search(query, limit=limit)
 
@@ -446,7 +451,7 @@ def crawl(ctx, url, max_pages):
 
     db = ctx.obj["db"]
     crawler_obj = DomainCrawler(db)
-
+    ctx.call_on_close(crawler_obj.close)
     click.echo(f"Spider crawling {url}...")
     click.echo(f"   Max pages: {max_pages}")
 
