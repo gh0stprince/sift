@@ -50,10 +50,28 @@ class FakeDB:
         return self.sources
 
     def add_source(self, name: str, feed_url: str, kind: str = "feed") -> None:
-        self.sources.append({"name": name, "feed_url": feed_url, "kind": kind})
+        self.sources.append(
+            {
+                "id": len(self.sources) + 1,
+                "name": name,
+                "feed_url": feed_url,
+                "kind": kind,
+            }
+        )
 
-    def add_page(self, url: str, title: str, content: str) -> None:
-        self.pages[url] = {"url": url, "title": title, "content": content}
+    def add_page(
+        self,
+        url: str,
+        title: str,
+        content: str,
+        source_id: int | None = None,
+    ) -> None:
+        self.pages[url] = {
+            "url": url,
+            "title": title,
+            "content": content,
+            "source_id": source_id,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -128,3 +146,25 @@ class TestRunAllIntegration:
 
         # Verify that fetched pages were actually stored in the DB
         assert len(db.pages) == stats["pages_fetched"]
+
+    def test_run_all_preserves_feed_source_id(self, monkeypatch) -> None:
+        """Pages ingested from a feed retain that feed's database ID."""
+        db = FakeDB()
+        db.add_source("Example Feed", "https://example.com/feed.xml", kind="feed")
+        fetcher = FeedFetcher(db)
+        monkeypatch.setattr(
+            fetcher,
+            "fetch_feed",
+            lambda _url: [{"url": "https://example.com/post", "title": "Post"}],
+        )
+        monkeypatch.setattr(
+            fetcher,
+            "fetch_page",
+            lambda url: {"url": url, "title": "Post", "content": "Body"},
+        )
+        monkeypatch.setattr("sift.feeds.time.sleep", lambda _seconds: None)
+
+        stats = fetcher.run_all(max_per_feed=1)
+
+        assert stats["pages_fetched"] == 1
+        assert db.pages["https://example.com/post"]["source_id"] == 1
