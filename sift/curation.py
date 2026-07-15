@@ -106,14 +106,33 @@ def read_capture(path: Path) -> RawCapture:
     return RawCapture(path, metadata, body, hashlib.sha256(raw).hexdigest())
 
 
-def _yaml_string(value: Any) -> str:
+def _yaml_string(value: str) -> str:
     """Encode a scalar safely as a YAML double-quoted string."""
-    return json.dumps(str(value), ensure_ascii=False)
+    return json.dumps(value, ensure_ascii=False)
 
 
-def _inline_text(value: Any) -> str:
+def _inline_text(value: str) -> str:
     """Keep provenance readable without allowing Markdown control characters."""
-    return " ".join(str(value).replace("`", "'").split())
+    return " ".join(value.replace("`", "'").split())
+
+
+def _provenance_lines(capture: RawCapture, vault: Path) -> list[str]:
+    """Render complete provenance for a capture added to a curated page."""
+    try:
+        raw_path = capture.path.resolve().relative_to(vault.resolve()).as_posix()
+    except ValueError:
+        raw_path = capture.path.resolve().as_posix()
+    source_query = str(capture.metadata.get("source_query", "")).strip()
+    query_display = source_query or "incomplete: source_query missing"
+    source_urls = capture.metadata.get("source_urls", []) or [
+        capture.metadata.get("source_url", "")
+    ]
+    lines = [f"- Raw capture: `{_inline_text(raw_path)}`",
+             f"- Source hash: `{capture.digest}`",
+             f"- Query: `{_inline_text(query_display)}`"]
+    lines.extend(f"- Source URL: {_inline_text(str(url))}"
+                 for url in source_urls if str(url).strip())
+    return lines
 
 
 def _validate_raw_capture(path: Path, capture: RawCapture, vault: Path) -> None:
@@ -130,9 +149,7 @@ def _validate_raw_capture(path: Path, capture: RawCapture, vault: Path) -> None:
         )
     declared_type = str(capture.metadata.get("type", "")).strip().lower()
     raw_roots = (vault / "raw" / "queries", vault / "80-raw" / "82-queries")
-    in_raw_root = any(
-        _is_relative_to(resolved, root.resolve()) for root in raw_roots
-    )
+    in_raw_root = any(resolved.is_relative_to(root.resolve()) for root in raw_roots)
     if not in_raw_root and declared_type != "raw-source":
         raise CurationError(
             f"refusing {path}: input is not under raw/queries and is not marked "
@@ -143,14 +160,6 @@ def _validate_raw_capture(path: Path, capture: RawCapture, vault: Path) -> None:
             f"refusing {path.name}: frontmatter type is {declared_type!r}, not "
             "raw-source; pass the original file from raw/queries instead"
         )
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True
 
 
 def _clean_model_text(text: str) -> str:
@@ -187,16 +196,12 @@ def _clean_model_text(text: str) -> str:
 def _heuristic_synthesis(capture: RawCapture) -> dict[str, Any]:
     title = capture.metadata.get("title") or capture.path.stem.replace("-", " ").title()
     clean = _clean_model_text(capture.body)
-    clean = re.sub(r"\n---\n.*", "", clean, flags=re.S).strip()
     return {"title": title, "type": "concept", "summary": clean.split("\n", 1)[0][:240],
             "body": clean, "links": [], "claims": []}
 
 
-def _yaml_value(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False) if isinstance(value, (list, dict)) else str(value)
-
-
-def _page_content(result: dict[str, Any], capture: RawCapture, links: list[str], conflicts: list[str]) -> str:
+def _page_content(result: dict[str, Any], capture: RawCapture, links: list[str],
+                  conflicts: list[str], vault: Path) -> str:
     today = date.today().isoformat()
     title = str(result["title"]).strip()
     title_yaml = _yaml_string(title)
@@ -214,11 +219,10 @@ def _page_content(result: dict[str, Any], capture: RawCapture, links: list[str],
                   f"    captured: {capture.metadata.get('ingested', today)}",
                   f"    sha256: {capture.digest}"]
     safe_title = _inline_text(title)
-    safe_query = _inline_text(query_display)
     if conflicts:
         lines += ["contradictions:"] + [f'  - claim: {_yaml_string(_inline_text(item))}\n    resolution: pending' for item in conflicts]
     lines += ["---", "", f"# {safe_title}", "", _normalize_markdown(str(result.get("body", ""))), "", "## Sources", "",
-              f"- Raw capture: `raw/queries/{capture.path.name}`", f"- Source hash: `{capture.digest}`", f"- Query: `{safe_query}`"]
+              *_provenance_lines(capture, vault)]
     if links:
         lines += ["", "## Related", ""] + [f"- [[{link}]]" for link in links]
     return "\n".join(lines).rstrip() + "\n"
@@ -261,7 +265,7 @@ def _existing_pages(vault: Path) -> dict[str, Path]:
     return pages
 
 
-def plan_curation(raw_dir: Path, vault: Path, synthesizer: Callable[[RawCapture], dict[str, Any]] | None = None) -> list[CurationPlan]:
+def plan_curation(raw_path: Path, vault: Path, synthesizer: Callable[[RawCapture], dict[str, Any]] | None = None) -> list[CurationPlan]:
     schema = vault / "10-system" / "11-meta" / "11.01 SCHEMA.md"
     index = vault / "10-system" / "11-meta" / "11.02 index.md"
     log = vault / "10-system" / "11-meta" / "11.03 log.md"
@@ -275,15 +279,15 @@ def plan_curation(raw_dir: Path, vault: Path, synthesizer: Callable[[RawCapture]
     synth = synthesizer or EndpointSynthesizer()
     existing = _existing_pages(vault)
     plans = []
-    seen_slugs: set[str] = set()
-    if raw_dir.is_file():
-        if raw_dir.suffix.lower() != ".md":
+    seen_slugs: dict[str, Path] = {}
+    if raw_path.is_file():
+        if raw_path.suffix.lower() != ".md":
             raise CurationError("curation input must be a Markdown file")
-        capture_paths = [raw_dir]
-    elif raw_dir.is_dir():
-        capture_paths = sorted(raw_dir.glob("*.md"))
+        capture_paths = [raw_path]
+    elif raw_path.is_dir():
+        capture_paths = sorted(raw_path.glob("*.md"))
     else:
-        raise CurationError(f"curation input does not exist: {raw_dir}")
+        raise CurationError(f"curation input does not exist: {raw_path}")
     for path in capture_paths:
         capture = read_capture(path)
         _validate_raw_capture(path, capture, vault)
@@ -294,15 +298,18 @@ def plan_curation(raw_dir: Path, vault: Path, synthesizer: Callable[[RawCapture]
             raise CurationError(f"provider result for {path.name} is missing a concept/entity title/body")
         slug = slugify(str(result["title"]))
         if slug in seen_slugs:
-            continue
-        seen_slugs.add(slug)
+            raise CurationError(
+                f"duplicate synthesized slug {slug!r} for "
+                f"{seen_slugs[slug].name} and {path.name}"
+            )
+        seen_slugs[slug] = path
         links = sorted({slugify(str(link)) for link in result.get("links", []) if slugify(str(link)) and slugify(str(link)) != slug})
         conflicts = []
         if not str(capture.metadata.get("source_query", "")).strip():
             conflicts.append("Provenance incomplete: raw capture has no source_query")
         conflicts.extend(str(item) for item in result.get("conflicts", result.get("claims", [])) if str(item).strip())
         target = existing.get(slug)
-        content = _page_content(result, capture, links, conflicts)
+        content = _page_content(result, capture, links, conflicts, vault)
         if target:
             existing_text = target.read_text(encoding="utf-8")
             if capture.digest in existing_text:
@@ -311,7 +318,7 @@ def plan_curation(raw_dir: Path, vault: Path, synthesizer: Callable[[RawCapture]
                 conflicts.append(f"Existing page {target.name} has prior claims; appended, not overwritten")
                 content = (existing_text.rstrip() + "\n\n## Sift curation update\n\n"
                            + _normalize_markdown(str(result["body"])) + "\n\n"
-                           + f"Source hash: `{capture.digest}`\n")
+                           + "\n".join(_provenance_lines(capture, vault)) + "\n")
         plans.append(CurationPlan(capture, str(result["title"]), page_type, slug,
                                   content, links, conflicts, target))
     return plans
