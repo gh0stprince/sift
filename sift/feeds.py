@@ -236,6 +236,7 @@ class FeedFetcher:
                             url=page_data["url"],
                             title=page_data["title"],
                             content=page_data["content"],
+                            source_id=feed["id"],
                         )
                         stats["pages_fetched"] += 1
                     else:
