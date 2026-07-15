@@ -2,11 +2,41 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 WIKI_RAW_DIR = Path.home() / "llm-wiki" / "raw" / "queries"
+
+
+def _yaml_string(value: str) -> str:
+    """Encode a scalar as a YAML-compatible JSON double-quoted string."""
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    """Replace *path* atomically with UTF-8 *content*."""
+    handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        newline="",
+        prefix=f".{path.name}.",
+        dir=path.parent,
+        delete=False,
+    )
+    temporary = Path(handle.name)
+    try:
+        with handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def slugify(text: str, max_len: int = 60) -> str:
@@ -132,21 +162,21 @@ def write_raw_source(
     tag_lines = "  - topic:research"
 
     # Add summary as description if we got one
-    summary_line = f'description: "{summary[:100]}"\n' if summary else ""
+    summary_line = f"description: {_yaml_string(summary[:100])}\n" if summary else ""
 
     frontmatter = f"""---
-title: "{title}"
+title: {_yaml_string(title)}
 created: {today}
 updated: {today}
 type: raw-source
 {summary_line}tags:
 {tag_lines}
-source_query: "{query}"
+source_query: {_yaml_string(query)}
 ingested: {today}
 """
 
     if sources:
-        source_lines = "\n".join(f"  - {s}" for s in sources[:10])
+        source_lines = "\n".join(f"  - {_yaml_string(s)}" for s in sources[:10])
         frontmatter += f"source:\n{source_lines}\n"
 
     frontmatter += "---"
@@ -171,20 +201,23 @@ ingested: {today}
     # Append if exists (raw sources accumulate updates)
     if page_path.exists():
         existing = page_path.read_text(encoding="utf-8")
-        fm_end = existing.find("---", 3)
-        if fm_end > 0:
-            existing_body = existing[fm_end + 3:].strip()
-            body = existing_body + f"\n\n---\n\n## Update - {today}\n\n{body}"
-            existing = (
-                existing[: fm_end + 3]
-                + "\nupdated: " + today + "\n"
-                + existing[fm_end + 3:]
+        fm_end = existing.find("\n---\n", 4)
+        if existing.startswith("---\n") and fm_end > 0:
+            frontmatter = existing[:fm_end]
+            updated_frontmatter, count = re.subn(
+                r"(?m)^updated:\s*.*$", f"updated: {today}", frontmatter, count=1
             )
-            existing = existing[: existing.rfind("---", 3)] + "---\n" + body
-            page_path.write_text(existing, encoding="utf-8")
+            if count == 0:
+                updated_frontmatter += f"\nupdated: {today}"
+            existing_body = existing[fm_end + len("\n---\n"):].rstrip()
+            updated = (
+                f"{updated_frontmatter}\n---\n\n{existing_body}"
+                f"\n\n---\n\n## Update - {today}\n\n{body}\n"
+            )
+            _atomic_write(page_path, updated)
             return str(page_path)
 
-    page_path.write_text(content, encoding="utf-8")
+    _atomic_write(page_path, content)
     return str(page_path)
 
 
