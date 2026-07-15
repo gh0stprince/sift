@@ -46,8 +46,8 @@ class FakeDB:
 
         self.conn = _Conn()
 
-    def get_sources(self) -> list[dict[str, Any]]:
-        return self.sources
+    def get_sources(self, kind: str | None = None) -> list[dict[str, Any]]:
+        return [source for source in self.sources if kind is None or source["kind"] == kind]
 
     def add_source(self, name: str, feed_url: str, kind: str = "feed") -> None:
         self.sources.append(
@@ -171,3 +171,17 @@ class TestRunAllIntegration:
 
         assert stats["pages_fetched"] == 1
         assert db.pages["https://example.com/post"]["source_id"] == 1
+
+    def test_run_all_ignores_crawl_sources(self, monkeypatch) -> None:
+        """Only registered feeds are selected for ingestion."""
+        db = FakeDB()
+        db.add_source("Crawler", "https://example.com", kind="crawl")
+        db.add_source("Feed", "https://example.com/feed", kind="feed")
+        fetcher = FeedFetcher(db)
+        requested = []
+        monkeypatch.setattr(fetcher, "fetch_feed", lambda url: requested.append(url) or [])
+
+        stats = fetcher.run_all(max_per_feed=1)
+
+        assert requested == ["https://example.com/feed"]
+        assert stats["feeds_checked"] == 1

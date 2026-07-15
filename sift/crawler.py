@@ -48,6 +48,16 @@ class DomainCrawler:
         self.robots = RobotsPolicy(self.session, configured_user_agent)
         self.skipped: dict[str, int] = {}
 
+    def close(self) -> None:
+        """Release the crawler's HTTP session."""
+        self.session.close()
+
+    def __enter__(self) -> DomainCrawler:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
     # ------------------------------------------------------------------
     # URL helpers
     # ------------------------------------------------------------------

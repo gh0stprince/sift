@@ -37,13 +37,23 @@ class FeedFetcher:
             }
         )
 
+    def close(self) -> None:
+        """Release the underlying HTTP session."""
+        self.session.close()
+
+    def __enter__(self) -> FeedFetcher:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
     # ------------------------------------------------------------------
     # Feed source management
     # ------------------------------------------------------------------
 
     def list_feeds(self) -> list[dict[str, Any]]:
         """Return all feed sources from the database."""
-        return self.db.get_sources()
+        return self.db.get_sources(kind="feed")
 
     def add_feed(self, name: str, url: str) -> None:
         """Register a new feed source."""

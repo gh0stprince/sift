@@ -47,6 +47,9 @@ def main(ctx, db, encrypted):
     resolved = Path(db).resolve() if db else None
     try:
         ctx.obj["db"] = DB(db_path=resolved, encrypted=encrypted)
+        close_db = getattr(ctx.obj["db"], "close", None)
+        if close_db is not None:
+            ctx.call_on_close(close_db)
     except Exception as exc:
         click.secho(f"Error initializing database: {exc}", fg="red", err=True)
         ctx.exit(1)
@@ -185,8 +188,10 @@ def stats(ctx):
     click.secho("📊 Sift Index Stats", bold=True)
     click.echo(f"  total_pages:    {s['total_pages']}")
     click.echo(f"  feed_pages:     {s['feed_pages']}")
+    click.echo(f"  crawl_pages:    {s['crawl_pages']}")
     click.echo(f"  pulse_pages:    {s['pulse_pages']}")
-    click.echo(f"  feeds_tracked:  {s['total_sources']}")
+    click.echo(f"  feeds_tracked:  {s['feed_sources']}")
+    click.echo(f"  crawls_tracked: {s['crawl_sources']}")
     click.echo(f"  total_pulses:   {s['total_pulses']}")
     click.echo(f"  newest_page:    {s['newest_page'] or 'never'}")
 

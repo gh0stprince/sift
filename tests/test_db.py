@@ -133,6 +133,37 @@ def test_stats(db):
     assert stats["newest_page"] is not None
 
 
+def test_add_source_is_idempotent_by_normalized_url_and_kind(db):
+    """Repeated refreshes reuse IDs while feed and crawl identities stay distinct."""
+    first = db.add_source("Example", "HTTPS://Example.COM:443/feed#fragment", kind="feed")
+    repeated = db.add_source("Renamed", "https://example.com/feed", kind="feed")
+    crawl = db.add_source("Crawler", "https://example.com/feed/", kind="crawl")
+
+    assert repeated == first
+    assert crawl != first
+    rows = db.conn.execute(
+        "SELECT id, name, feed_url, kind FROM sources ORDER BY id"
+    ).fetchall()
+    assert [row["kind"] for row in rows] == ["feed", "crawl"]
+    assert rows[0]["feed_url"] == "https://example.com/feed"
+
+
+def test_get_sources_and_stats_keep_feed_and_crawl_semantics_separate(db):
+    """Feed operations and counters never include crawler-owned records."""
+    feed_id = db.add_source("Feed", "https://example.com/feed", kind="feed")
+    crawl_id = db.add_source("Crawl", "https://example.com", kind="crawl")
+    db.add_page("https://example.com/post", "Feed post", "feed", source_id=feed_id)
+    db.add_page("https://example.com/page", "Crawl page", "crawl", source_id=crawl_id)
+
+    assert [source["id"] for source in db.get_sources(kind="feed")] == [feed_id]
+    assert [source["id"] for source in db.get_sources(kind="crawl")] == [crawl_id]
+    stats = db.get_stats()
+    assert stats["feed_sources"] == 1
+    assert stats["crawl_sources"] == 1
+    assert stats["feed_pages"] == 1
+    assert stats["crawl_pages"] == 1
+
+
 def test_search_fresh_boost():
     import tempfile
     from pathlib import Path
