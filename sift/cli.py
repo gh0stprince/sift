@@ -289,7 +289,12 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
                 if not u:
                     continue
                 if u not in all_urls:
-                    all_urls[u] = {"count": 0, "title": r["title"], "body": r["body"]}
+                    all_urls[u] = {
+                        "url": u,
+                        "count": 0,
+                        "title": r["title"],
+                        "body": r["body"],
+                    }
                 all_urls[u]["count"] += 1
 
         ranked = sorted(all_urls.items(), key=lambda x: -x[1]["count"])
