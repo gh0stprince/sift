@@ -72,6 +72,28 @@ def test_existing_page_is_appended_not_overwritten(tmp_path):
     assert "Wrapped claim continues here." in wrapped_plan.content
 
 
+def test_existing_page_append_preserves_complete_new_provenance(tmp_path):
+    vault, _raw = make_vault(tmp_path)
+    legacy_raw = vault / "80-raw" / "82-queries" / "legacy.md"
+    legacy_raw.parent.mkdir(parents=True)
+    legacy_raw.write_text(
+        "---\ntitle: Legacy capture\ntype: raw-source\n"
+        "source_query: legacy research\ningested: 2026-07-14\n---\n\n"
+        "Source: https://example.com/research\n\nNew finding.\n",
+        encoding="utf-8",
+    )
+    target = vault / "20-knowledge-tech" / "21-ai-concepts" / "x-concept.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("---\ntitle: X concept\n---\n\nOriginal claim.\n", encoding="utf-8")
+
+    plan = plan_curation(legacy_raw, vault, synth)[0]
+
+    assert "Raw capture: `80-raw/82-queries/legacy.md`" in plan.content
+    assert "Source hash: `" + plan.source.digest + "`" in plan.content
+    assert "Query: `legacy research`" in plan.content
+    assert "Source URL: https://example.com/research" in plan.content
+
+
 def test_file_input_processes_only_selected_capture(tmp_path):
     vault, raw = make_vault(tmp_path)
     sibling = raw / "sibling.md"
@@ -112,7 +134,7 @@ def test_reasoning_and_rendered_sources_are_stripped(tmp_path):
         "Final answer:\nFolk magic is a useful concept.\n\n## Sources\n\n- https://example.com\n",
         encoding="utf-8",
     )
-    plans = plan_curation(raw, vault, lambda _capture: {
+    plans = plan_curation(capture, vault, lambda _capture: {
         "title": "Folk magic", "type": "concept",
         "body": capture.read_text(encoding="utf-8").split("---", 2)[-1],
         "links": [], "claims": [],
@@ -128,9 +150,41 @@ def test_missing_source_query_is_visible_conflict(tmp_path):
     vault, raw = make_vault(tmp_path)
     capture = raw / "no-query.md"
     capture.write_text("---\ntitle: No query\ntype: raw-source\n---\n\nBody.\n", encoding="utf-8")
-    plan = next(plan for plan in plan_curation(raw, vault, synth) if plan.slug == "x-concept")
+    plan = plan_curation(capture, vault, synth)[0]
     assert "incomplete" in plan.content
     assert any("source_query" in item for item in plan.conflicts)
+
+
+def test_heuristic_curation_preserves_body_after_horizontal_rule(tmp_path):
+    vault, raw = make_vault(tmp_path)
+    capture = raw / "horizontal-rule.md"
+    capture.write_text(
+        "---\ntitle: Divided notes\ntype: raw-source\nsource_query: divided notes\n---\n\n"
+        "First section.\n\n---\n\nSecond section must survive.\n",
+        encoding="utf-8",
+    )
+
+    plan = next(plan for plan in plan_curation(capture, vault)
+                if plan.slug == "divided-notes")
+
+    assert "First section." in plan.content
+    assert "Second section must survive." in plan.content
+
+
+def test_duplicate_synthesized_slugs_fail_visibly(tmp_path):
+    vault, raw = make_vault(tmp_path)
+    (raw / "second.md").write_text(
+        "---\ntitle: Second capture\ntype: raw-source\nsource_query: second\n---\n\n"
+        "Different source body.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CurationError, match="duplicate.*x-concept") as exc_info:
+        plan_curation(raw, vault, synth)
+
+    message = str(exc_info.value)
+    assert "query.md" in message
+    assert "second.md" in message
 
 
 def test_normalize_markdown_joins_only_wrapped_prose():
