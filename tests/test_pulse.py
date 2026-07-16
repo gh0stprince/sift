@@ -114,6 +114,31 @@ def test_max_pages_is_one_global_budget_across_depths(monkeypatch) -> None:
     assert result["pages_found"] == 2
 
 
+def test_max_pages_limits_failed_fetch_attempts(monkeypatch) -> None:
+    """The global page budget bounds requests, not only successful stores."""
+    engine, calls = _offline_engine(
+        monkeypatch,
+        [
+            "https://a.example/",
+            "https://b.example/",
+            "https://c.example/",
+        ],
+        {},
+    )
+    monkeypatch.setattr(
+        engine,
+        "_fetch_page",
+        lambda url, pulse_id, link_depth: (
+            calls.append((url, pulse_id, link_depth)) or (None, [])
+        ),
+    )
+
+    result = engine.run("query", depth=1, max_pages=2)
+
+    assert len(calls) == 2
+    assert result["pages_found"] == 0
+
+
 @pytest.mark.integration
 def test_real_pulse() -> None:
     """Run a real pulse against DDG and verify results in the DB.
