@@ -146,10 +146,8 @@ ingested: {today}
 """
 
     if sources:
-        source_lines = "\n".join(
-            f'  - url: "{s}"\n    accessed: {today}' for s in sources[:10]
-        )
-        frontmatter += f"sources:\n{source_lines}\n"
+        source_lines = "\n".join(f"  - {s}" for s in sources[:10])
+        frontmatter += f"source:\n{source_lines}\n"
 
     frontmatter += "---"
 
