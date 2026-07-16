@@ -10,7 +10,7 @@ from typing import Any
 import requests
 import trafilatura
 
-from sift.outbound import OutboundPolicy, safe_get
+from sift.outbound import OutboundPolicy, PinnedSession, safe_get
 from sift.robots import RobotsPolicy
 
 
@@ -35,7 +35,7 @@ class FeedFetcher:
         resolver=None,
     ) -> None:
         self.db = db_instance
-        self.session = session or requests.Session()
+        self.session = session or PinnedSession()
         configured_user_agent = (
             user_agent or "Sift/0.1.0 (+https://github.com/gh0st/sift)"
         )

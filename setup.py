@@ -12,7 +12,7 @@ setup(
         "python-dotenv>=1.0.0",
         "trafilatura>=2.0.0",
         "lxml_html_clean>=0.4.0",
-        "requests>=2.30.0",
+        "requests>=2.32.3",
         "httpx>=0.28.0",
         "click>=8.0.0",
     ],
