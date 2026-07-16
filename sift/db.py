@@ -173,7 +173,7 @@ class DB:
         """)
 
     def _migrate_source_uniqueness(self):
-        """Upgrade the legacy URL-only source constraint without losing IDs."""
+        """Normalize/deduplicate sources and upgrade the legacy constraint."""
         indexes = self.conn.execute("PRAGMA index_list(sources)").fetchall()
         legacy = False
         for index in indexes:
@@ -185,14 +185,45 @@ class DB:
             if [column["name"] for column in columns] == ["feed_url"]:
                 legacy = True
                 break
-        if not legacy:
+        source_rows = self.conn.execute(
+            "SELECT id, name, feed_url, kind, added_at FROM sources ORDER BY id"
+        ).fetchall()
+        retained = []
+        retained_by_identity = {}
+        duplicate_ids = {}
+        needs_cleanup = False
+        for row in source_rows:
+            normalized = _normalize_source_url(row["feed_url"])
+            identity = (normalized, row["kind"])
+            retained_id = retained_by_identity.get(identity)
+            if retained_id is not None:
+                duplicate_ids[row["id"]] = retained_id
+                needs_cleanup = True
+                continue
+            retained_by_identity[identity] = row["id"]
+            retained.append(
+                (row["id"], row["name"], normalized, row["kind"], row["added_at"])
+            )
+            needs_cleanup = needs_cleanup or normalized != row["feed_url"]
+
+        if not legacy and not needs_cleanup:
             return
 
         self.conn.commit()
         self.conn.execute("PRAGMA foreign_keys=OFF")
         try:
-            self.conn.executescript("""
-                BEGIN;
+            self.conn.execute("BEGIN")
+            # Repointing ownership does not change indexed text. Avoid firing the
+            # external-content FTS update trigger for legacy rows that predate
+            # pages_fts, because deleting a missing FTS row corrupts the index.
+            self.conn.execute("DROP TRIGGER IF EXISTS pages_au")
+            for duplicate_id, retained_id in duplicate_ids.items():
+                self.conn.execute(
+                    "UPDATE pages SET source_id = ? WHERE source_id = ?",
+                    (retained_id, duplicate_id),
+                )
+            self.conn.execute("DROP TABLE IF EXISTS sources_new")
+            self.conn.execute("""
                 CREATE TABLE sources_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
@@ -200,18 +231,22 @@ class DB:
                     kind TEXT NOT NULL DEFAULT 'feed',
                     added_at TEXT NOT NULL DEFAULT (datetime('now')),
                     UNIQUE(feed_url, kind)
-                );
-                INSERT INTO sources_new (id, name, feed_url, kind, added_at)
-                    SELECT id, name, feed_url, kind, added_at FROM sources;
-                DROP TABLE sources;
-                ALTER TABLE sources_new RENAME TO sources;
-                COMMIT;
+                )
             """)
+            self.conn.executemany(
+                """INSERT INTO sources_new (id, name, feed_url, kind, added_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                retained,
+            )
+            self.conn.execute("DROP TABLE sources")
+            self.conn.execute("ALTER TABLE sources_new RENAME TO sources")
+            self.conn.commit()
         except Exception:
             self.conn.rollback()
             raise
         finally:
             self.conn.execute("PRAGMA foreign_keys=ON")
+            self._init_schema()
 
     def close(self):
         self.conn.close()
