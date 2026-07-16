@@ -350,13 +350,15 @@ class PulseEngine:
 
         # Step 4: Breadth-first traversal. Depth zero is search-only; depth one
         # fetches seed URLs; each higher value adds one outgoing-link level.
+        pages_attempted = 0
         pages_stored = 0
         seen = {url for url, _info in ranked}
         queue = deque((url, 0) for url, _info in ranked)
-        while queue and pages_stored < max_pages:
+        while queue and pages_attempted < max_pages:
             url, link_depth = queue.popleft()
             if link_depth >= depth:
                 continue
+            pages_attempted += 1
             stored, links = self._fetch_page(url, pulse_id, link_depth)
             if stored is None:
                 continue
