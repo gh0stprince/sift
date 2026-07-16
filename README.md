@@ -154,3 +154,12 @@ Run tests:
 ```bash
 pytest
 ```
+
+Run local pre-push quality checks:
+```bash
+make prepush
+```
+
+CI is split by intent:
+- Fast PR/push checks: `Pylint` + `Tests` (unit, non-integration)
+- Nightly checks: integration suite + scheduled security analysis

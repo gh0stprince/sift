@@ -156,12 +156,14 @@ Closes #42
 
 Prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 
+Avoid vague commit titles like `improvements` or `updates`. Use scoped,
+descriptive messages so review history and release notes stay precise.
+
 ### Before You Push
 
-1. Run `pytest` — tests must pass.
-2. Run `pylint sift/ tests/` — address new warnings (or explain in your PR).
-3. Check that your changes work end-to-end with `sift --help` and any affected
-   commands.
+1. Run `make prepush` — this runs lint, unit tests, and a CLI smoke check.
+2. If your change touches integration behavior, also run `pytest -m integration`.
+3. Address new warnings/failures before opening or updating your PR.
 
 ---
 
@@ -261,6 +263,18 @@ heavy, complex LLM interaction), document what you tested manually.
    request tests. This is a small project so turnaround is usually quick.
 7. **Merging** — I'll squash-merge into `main` unless there's a reason to keep
    history.
+
+### Branch Protection (Repository Setting)
+
+Protect `main` in GitHub with these required checks:
+
+- `Pylint`
+- `Tests`
+- `CodeQL`
+
+Also enable:
+
+- Require branches to be up to date before merging.
 
 ### PR Template
 

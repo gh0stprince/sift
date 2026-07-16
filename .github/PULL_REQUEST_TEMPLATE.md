@@ -2,6 +2,18 @@
 
 What does this PR change and why? Link to any related issues.
 
+## Impact
+
+What user-visible behavior changes (if any) should reviewers expect?
+
+## Risk
+
+What could go wrong with this change, and how is that risk mitigated?
+
+## Validation
+
+How did you validate this change (tests, lint, smoke checks, manual checks)?
+
 ## Type of Change
 
 - [ ] Bug fix
@@ -9,14 +21,6 @@ What does this PR change and why? Link to any related issues.
 - [ ] Refactor / code cleanup
 - [ ] Documentation
 - [ ] CI / tooling / chore
-
-## How Has This Been Tested?
-
-- [ ] `pytest` passes locally
-- [ ] `pylint` shows no new warnings (or exceptions explained below)
-- [ ] Manual testing described below
-
-Describe any manual testing you did:
 
 ## Checklist
 

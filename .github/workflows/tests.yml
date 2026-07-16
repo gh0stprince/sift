@@ -1,4 +1,4 @@
-name: Pylint
+name: Tests
 
 on:
   push:
@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  pylint:
-    name: Pylint
+  unit-tests:
+    name: Tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -24,6 +24,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install setuptools pylint
-      - name: Analysing the code with pylint
-        run: pylint $(git ls-files '*.py')
+          pip install -e .
+          pip install pytest
+      - name: Run unit tests
+        run: pytest -m "not integration"

@@ -1,0 +1,64 @@
+name: PR Automation
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  validate-template:
+    name: Validate PR Template
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure required PR sections are present
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = (context.payload.pull_request.body || '').toLowerCase();
+            const required = ['## impact', '## risk', '## validation'];
+            const missing = required.filter((section) => !body.includes(section));
+            if (missing.length > 0) {
+              core.setFailed(`Missing required PR sections: ${missing.join(', ')}`);
+            }
+
+  auto-label:
+    name: Auto-label by Path
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure labels exist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              { name: 'ci', color: '0E8A16', description: 'CI and workflow changes' },
+              { name: 'curation', color: '5319E7', description: 'Curation pipeline changes' },
+              { name: 'db', color: '1D76DB', description: 'Database layer changes' },
+              { name: 'docs', color: '0075CA', description: 'Documentation changes' },
+              { name: 'tests', color: 'BFD4F2', description: 'Test suite changes' }
+            ];
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  color: label.color,
+                  description: label.description
+                });
+              } catch (error) {
+                if (error.status !== 422) {
+                  throw error;
+                }
+              }
+            }
+      - name: Apply labels
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
