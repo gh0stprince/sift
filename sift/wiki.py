@@ -77,14 +77,14 @@ def _merge_frontmatter_provenance(
     if re.search(r"(?m)^source_queries:\n", frontmatter):
         frontmatter = re.sub(
             r"(?m)^source_queries:\n(?:  - .*\n?)*",
-            query_block + "\n",
+            lambda _match: query_block + "\n",
             frontmatter,
             count=1,
         ).rstrip()
     else:
         frontmatter = re.sub(
             r"(?m)^(source_query:.*)$",
-            rf"\1\n{query_block}",
+            lambda match: f"{match.group(1)}\n{query_block}",
             frontmatter,
             count=1,
         )
@@ -99,7 +99,7 @@ def _merge_frontmatter_provenance(
         if re.search(r"(?m)^source:\n", frontmatter):
             frontmatter = re.sub(
                 r"(?m)^source:\n(?:  - .*\n?)*",
-                source_block + "\n",
+                lambda _match: source_block + "\n",
                 frontmatter,
                 count=1,
             ).rstrip()

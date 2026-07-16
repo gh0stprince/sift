@@ -78,17 +78,18 @@ def test_repeated_slug_merges_query_and_source_provenance(
             ["https://example.com/first"],
         )
     )
+    second_query = 'second: "quoted" \\ path\nnext line'
     write_raw_source(
         "Repeated",
         "repeated",
-        "second query",
+        second_query,
         "Second answer.",
         ["https://example.com/second"],
     )
 
     capture = read_capture(path)
 
-    assert capture.metadata["source_query"] == ["first query", "second query"]
+    assert capture.metadata["source_query"] == ["first query", second_query]
     assert capture.metadata["source_urls"] == [
         "https://example.com/first",
         "https://example.com/second",

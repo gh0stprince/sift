@@ -7,9 +7,8 @@ import logging
 import time
 import warnings
 from collections import deque
-from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 import trafilatura
@@ -18,25 +17,11 @@ import trafilatura
 warnings.filterwarnings("ignore", message=".*ddgs.*renamed.*")
 from ddgs import DDGS
 
+from sift.links import extract_links
 from sift.outbound import OutboundPolicy, PinnedSession, safe_get
 from sift.robots import RobotsPolicy
 
 logger = logging.getLogger(__name__)
-
-
-class _LinkExtractor(HTMLParser):
-    """HTML parser that collects all href attributes from <a> tags."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.links: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag != "a":
-            return
-        for name, value in attrs:
-            if name == "href" and value is not None:
-                self.links.append(value)
 
 
 class PulseEngine:
@@ -50,19 +35,6 @@ class PulseEngine:
     user_agent : str | None
         User-Agent header value.
     """
-
-    SOCIAL_DOMAINS = frozenset({
-        "facebook.com",
-        "www.facebook.com",
-        "twitter.com",
-        "www.twitter.com",
-        "x.com",
-        "www.x.com",
-        "linkedin.com",
-        "www.linkedin.com",
-        "instagram.com",
-        "www.instagram.com",
-    })
 
     def __init__(
         self,
@@ -250,28 +222,10 @@ class PulseEngine:
     # Link extraction from HTML
     # ------------------------------------------------------------------
 
-    @classmethod
-    def _extract_links(cls, html: str, base_url: str) -> list[str]:
+    @staticmethod
+    def _extract_links(html: str, base_url: str) -> list[str]:
         """Parse HTML and return absolute http/s URLs, excluding social media."""
-        parser = _LinkExtractor()
-        try:
-            parser.feed(html)
-        except Exception:
-            return []
-
-        out: list[str] = []
-        for href in parser.links:
-            absolute = urljoin(base_url, href)
-            # Keep only http/s URLs
-            if not absolute.startswith(("http://", "https://")):
-                continue
-            # Filter out social media domains
-            parsed = absolute.split("/")[2] if "://" in absolute else ""
-            if parsed in cls.SOCIAL_DOMAINS:
-                continue
-            out.append(absolute)
-
-        return out
+        return extract_links(html, base_url)
 
     # ------------------------------------------------------------------
     # Main run method
