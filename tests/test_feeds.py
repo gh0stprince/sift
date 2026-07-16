@@ -92,6 +92,7 @@ def fetcher() -> FeedFetcher:
 class TestFetchRealFeed:
     """Actually fetch a live RSS feed from lobste.rs."""
 
+    @pytest.mark.integration
     def test_fetch_real_feed(self, fetcher: FeedFetcher) -> None:
         """Hit lobste.rs RSS and verify we get entries with url and title."""
         entries = fetcher.fetch_feed("https://lobste.rs/rss")
@@ -106,6 +107,7 @@ class TestFetchRealFeed:
 class TestFetchRealPage:
     """Actually download a page and run trafilatura extraction."""
 
+    @pytest.mark.integration
     def test_fetch_real_page(self, fetcher: FeedFetcher) -> None:
         """Hit example.com and verify extracted text is returned."""
         result = fetcher.fetch_page("https://example.com")
@@ -121,6 +123,7 @@ class TestFetchRealPage:
 class TestRunAllIntegration:
     """End-to-end: add feeds, run_all, check stats."""
 
+    @pytest.mark.integration
     def test_run_all_integration(self) -> None:
         """Add a real feed, run with max_per_feed=3, verify stats shape."""
         db = FakeDB()
