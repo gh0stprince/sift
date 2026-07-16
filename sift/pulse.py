@@ -322,8 +322,8 @@ class PulseEngine:
         """
         if not isinstance(depth, int) or not 0 <= depth <= 3:
             raise ValueError("depth must be between 0 and 3")
-        if not isinstance(max_pages, int) or max_pages < 0:
-            raise ValueError("max_pages must be a non-negative integer")
+        if not isinstance(max_pages, int) or max_pages <= 0:
+            raise ValueError("max_pages must be a positive integer")
 
         # Step 1: Create pulse record.
         pulse_id = self.db.add_pulse(query, depth)
