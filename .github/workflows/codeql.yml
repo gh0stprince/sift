@@ -15,19 +15,10 @@ permissions:
 
 jobs:
   analyze:
-    name: CodeQL
+    name: CodeQL (python)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [python]
     steps:
-      - uses: actions/checkout@v4
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+      - name: Skip advanced CodeQL workflow
+        run: |
+          echo "Skipping advanced CodeQL workflow because repository default setup is enabled."
+          echo "Code scanning is handled by GitHub CodeQL default setup."
