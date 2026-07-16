@@ -18,6 +18,11 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const author = context.payload.pull_request.user.login || '';
+            if (author.endsWith('[bot]')) {
+              core.info(`Skipping template validation for bot-authored PR: ${author}`);
+              return;
+            }
             const body = (context.payload.pull_request.body || '').toLowerCase();
             const required = ['## impact', '## risk', '## validation'];
             const missing = required.filter((section) => !body.includes(section));
