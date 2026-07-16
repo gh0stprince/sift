@@ -7,8 +7,10 @@
 
 ## Development setup and validation
 - Install in editable mode: `pip install -e .`
-- Run tests: `pytest`
-- Run linting: `pylint sift/ tests/`
+- Preferred local gate: `make prepush` (lint + unit tests + CLI smoke check).
+- Run unit tests directly: `pytest -m "not integration"`
+- Run integration tests when relevant: `pytest -m integration`
+- Run linting directly: `pylint sift/ tests/`
 - Keep changes focused and verify affected CLI behavior with `sift --help` and relevant commands.
 
 ## Coding conventions
@@ -20,6 +22,10 @@
 
 ## Repository-specific expectations
 - Avoid broad refactors in feature/fix PRs; keep commits focused.
+- Keep PR descriptions aligned with repository template sections: `## Impact`, `## Risk`, and `## Validation`.
+- Keep CI expectations aligned with workflow split:
+  - Fast PR/push checks: `Pylint` and `Tests` (unit, non-integration)
+  - Scheduled deep checks: `CodeQL` and nightly integration tests
 - Update docs when user-facing CLI flags, commands, or config/environment variables change:
   - Usage docs: `/home/runner/work/sift/sift/docs/Usage.md`
   - Config/setup docs: `/home/runner/work/sift/sift/docs/Configuration.md`, `/home/runner/work/sift/sift/docs/Setup.md`
