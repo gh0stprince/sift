@@ -39,6 +39,75 @@ def _atomic_write(path: Path, content: str) -> None:
         raise
 
 
+def _decode_frontmatter_value(value: str) -> str:
+    """Decode the JSON-backed scalar form used by generated frontmatter."""
+    try:
+        decoded = json.loads(value.strip())
+    except json.JSONDecodeError:
+        decoded = value.strip().strip('"')
+    return str(decoded)
+
+
+def _frontmatter_list(frontmatter: str, key: str) -> list[str]:
+    """Return one generated scalar-list property from *frontmatter*."""
+    match = re.search(rf"(?m)^{re.escape(key)}:\n((?:  - .*\n?)*)", frontmatter)
+    if not match:
+        return []
+    return [
+        _decode_frontmatter_value(line[4:])
+        for line in match.group(1).splitlines()
+        if line.startswith("  - ")
+    ]
+
+
+def _merge_frontmatter_provenance(
+    frontmatter: str, query: str, sources: list[str]
+) -> str:
+    """Merge appended query/source provenance into opening frontmatter."""
+    queries = _frontmatter_list(frontmatter, "source_queries")
+    if not queries:
+        match = re.search(r"(?m)^source_query:\s*(.*)$", frontmatter)
+        if match:
+            queries.append(_decode_frontmatter_value(match.group(1)))
+    if query not in queries:
+        queries.append(query)
+    query_block = "source_queries:\n" + "\n".join(
+        f"  - {_yaml_string(value)}" for value in queries
+    )
+    if re.search(r"(?m)^source_queries:\n", frontmatter):
+        frontmatter = re.sub(
+            r"(?m)^source_queries:\n(?:  - .*\n?)*",
+            query_block + "\n",
+            frontmatter,
+            count=1,
+        ).rstrip()
+    else:
+        frontmatter = re.sub(
+            r"(?m)^(source_query:.*)$",
+            rf"\1\n{query_block}",
+            frontmatter,
+            count=1,
+        )
+
+    merged_sources = list(
+        dict.fromkeys([*_frontmatter_list(frontmatter, "source"), *sources])
+    )
+    if merged_sources:
+        source_block = "source:\n" + "\n".join(
+            f"  - {_yaml_string(value)}" for value in merged_sources
+        )
+        if re.search(r"(?m)^source:\n", frontmatter):
+            frontmatter = re.sub(
+                r"(?m)^source:\n(?:  - .*\n?)*",
+                source_block + "\n",
+                frontmatter,
+                count=1,
+            ).rstrip()
+        else:
+            frontmatter = f"{frontmatter.rstrip()}\n{source_block}"
+    return frontmatter
+
+
 def slugify(text: str, max_len: int = 60) -> str:
     """Convert text to a wiki-safe filename slug."""
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
@@ -209,6 +278,9 @@ ingested: {today}
             )
             if count == 0:
                 updated_frontmatter += f"\nupdated: {today}"
+            updated_frontmatter = _merge_frontmatter_provenance(
+                updated_frontmatter, query, sources
+            )
             existing_body = existing[fm_end + len("\n---\n"):].rstrip()
             updated = (
                 f"{updated_frontmatter}\n---\n\n{existing_body}"
