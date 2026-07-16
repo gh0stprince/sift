@@ -18,7 +18,7 @@ import trafilatura
 warnings.filterwarnings("ignore", message=".*ddgs.*renamed.*")
 from ddgs import DDGS
 
-from sift.outbound import OutboundPolicy, safe_get
+from sift.outbound import OutboundPolicy, PinnedSession, safe_get
 from sift.robots import RobotsPolicy
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ class PulseEngine:
         sleeper=time.sleep,
     ) -> None:
         self.db = db
-        self.session = session or requests.Session()
+        self.session = session or PinnedSession()
         configured_user_agent = user_agent or "Sift/0.1.0 (+https://github.com/gh0st/sift)"
         self.session.headers.update({
             "User-Agent": configured_user_agent,
@@ -250,7 +250,8 @@ class PulseEngine:
     # Link extraction from HTML
     # ------------------------------------------------------------------
 
-    def _extract_links(self, html: str, base_url: str) -> list[str]:
+    @classmethod
+    def _extract_links(cls, html: str, base_url: str) -> list[str]:
         """Parse HTML and return absolute http/s URLs, excluding social media."""
         parser = _LinkExtractor()
         try:
@@ -266,7 +267,7 @@ class PulseEngine:
                 continue
             # Filter out social media domains
             parsed = absolute.split("/")[2] if "://" in absolute else ""
-            if parsed in self.SOCIAL_DOMAINS:
+            if parsed in cls.SOCIAL_DOMAINS:
                 continue
             out.append(absolute)
 
@@ -319,6 +320,11 @@ class PulseEngine:
             ``{"pulse_id": id, "query": query,
                 "pages_found": n, "total_depth": depth}``
         """
+        if not isinstance(depth, int) or not 0 <= depth <= 3:
+            raise ValueError("depth must be between 0 and 3")
+        if not isinstance(max_pages, int) or max_pages < 0:
+            raise ValueError("max_pages must be a non-negative integer")
+
         # Step 1: Create pulse record.
         pulse_id = self.db.add_pulse(query, depth)
 
@@ -353,8 +359,15 @@ class PulseEngine:
         pages_attempted = 0
         pages_stored = 0
         seen = {url for url, _info in ranked}
-        queue = deque((url, 0) for url, _info in ranked)
-        while queue and pages_attempted < max_pages:
+        seed_urls = deque(url for url, _info in ranked)
+        seed_limit = max_pages if depth <= 1 else max(1, max_pages // depth)
+        queue = deque(
+            (seed_urls.popleft(), 0)
+            for _unused in range(min(seed_limit, len(seed_urls)))
+        )
+        while (queue or seed_urls) and pages_attempted < max_pages:
+            if not queue:
+                queue.append((seed_urls.popleft(), 0))
             url, link_depth = queue.popleft()
             if link_depth >= depth:
                 continue

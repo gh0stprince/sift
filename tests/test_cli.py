@@ -14,6 +14,7 @@ def test_documented_cli_contract_matches_click_help() -> None:
         ("ask", "--help"): ("--limit", "--wiki", "--wiki-slug"),
         ("feeds", "--help"): ("{list|add|init}",),
         ("ingest", "--help"): ("--max-per-feed",),
+        ("pulse", "--help"): ("0<=x<=3",),
         ("search", "--help"): ("--fresh",),
     }
     for arguments, expected in cases.items():
@@ -30,6 +31,13 @@ def test_documented_cli_contract_matches_click_help() -> None:
     assert "sift feed --limit" not in usage
     assert "~/.local/share/sift/sift.db" not in faq
     assert "--wiki llm-benchmarks-2024" not in readme
+
+
+def test_pulse_cli_rejects_depth_above_three() -> None:
+    result = CliRunner().invoke(main, ["pulse", "query", "--depth", "4"])
+
+    assert result.exit_code == 2
+    assert "0<=x<=3" in result.output
 
 
 class _EmptyDB:
