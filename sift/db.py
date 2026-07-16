@@ -73,7 +73,9 @@ class DB:
                     f"Encrypted mode requires a non-empty {KEY_ENV} environment variable"
                 )
             driver = _sqlcipher_module()
-            self.conn = driver.connect(str(self.db_path))
+            # sqlcipher3 exposes connect at runtime, but its extension module does
+            # not publish enough static metadata for pylint to discover it.
+            self.conn = driver.connect(str(self.db_path))  # pylint: disable=no-member
             try:
                 self.conn.execute(_key_pragma(self.key))
                 self.conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
