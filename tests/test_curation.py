@@ -94,6 +94,22 @@ def test_existing_page_append_preserves_complete_new_provenance(tmp_path):
     assert "Source URL: https://example.com/research" in plan.content
 
 
+def test_curation_quotes_captured_provenance_scalar(tmp_path):
+    """Unexpected captured metadata cannot alter curated YAML structure."""
+    vault, raw = make_vault(tmp_path)
+    capture = raw / "query.md"
+    capture.write_text(
+        '---\ntitle: "Research query"\nsource_query: "what is X"\n'
+        'ingested: "2026-07-13: draft #1"\nsource:\n'
+        '  - "https://example.com/source"\n---\n\nX is useful.\n',
+        encoding="utf-8",
+    )
+
+    plan = plan_curation(capture, vault, synth)[0]
+
+    assert 'captured: "2026-07-13: draft #1"' in plan.content
+
+
 def test_file_input_processes_only_selected_capture(tmp_path):
     vault, raw = make_vault(tmp_path)
     sibling = raw / "sibling.md"

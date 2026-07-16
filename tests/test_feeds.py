@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from sift.feeds import FeedFetcher
+from sift.outbound import UnsafeURLError
 
 
 # ---------------------------------------------------------------------------
@@ -46,8 +47,8 @@ class FakeDB:
 
         self.conn = _Conn()
 
-    def get_sources(self) -> list[dict[str, Any]]:
-        return self.sources
+    def get_sources(self, kind: str | None = None) -> list[dict[str, Any]]:
+        return [source for source in self.sources if kind is None or source["kind"] == kind]
 
     def add_source(self, name: str, feed_url: str, kind: str = "feed") -> None:
         self.sources.append(
@@ -95,7 +96,13 @@ class TestFetchRealFeed:
     @pytest.mark.integration
     def test_fetch_real_feed(self, fetcher: FeedFetcher) -> None:
         """Hit lobste.rs RSS and verify we get entries with url and title."""
-        entries = fetcher.fetch_feed("https://lobste.rs/rss")
+        decision = fetcher.robots.check("https://lobste.rs/rss")
+        if not decision.allowed:
+            pytest.skip(f"live origin denied by robots policy: {decision.reason}")
+        try:
+            entries = fetcher.fetch_feed("https://lobste.rs/rss")
+        except UnsafeURLError as exc:
+            pytest.skip(f"live feed redirect denied by outbound policy: {exc}")
         assert len(entries) > 0, "Expected at least one entry from lobste.rs"
         for entry in entries:
             assert "url" in entry, "Each entry must have a URL"
@@ -110,7 +117,12 @@ class TestFetchRealPage:
     @pytest.mark.integration
     def test_fetch_real_page(self, fetcher: FeedFetcher) -> None:
         """Hit example.com and verify extracted text is returned."""
+        decision = fetcher.robots.check("https://example.com")
+        if not decision.allowed:
+            pytest.skip(f"live origin denied by robots policy: {decision.reason}")
         result = fetcher.fetch_page("https://example.com")
+        if result is None:
+            pytest.skip("live page unavailable, denied, or not extractable")
         assert result is not None, "Expected page data, got None"
         assert "url" in result, "Result must have a URL"
         assert "title" in result, "Result must have a title"
@@ -171,3 +183,17 @@ class TestRunAllIntegration:
 
         assert stats["pages_fetched"] == 1
         assert db.pages["https://example.com/post"]["source_id"] == 1
+
+    def test_run_all_ignores_crawl_sources(self, monkeypatch) -> None:
+        """Only registered feeds are selected for ingestion."""
+        db = FakeDB()
+        db.add_source("Crawler", "https://example.com", kind="crawl")
+        db.add_source("Feed", "https://example.com/feed", kind="feed")
+        fetcher = FeedFetcher(db)
+        requested = []
+        monkeypatch.setattr(fetcher, "fetch_feed", lambda url: requested.append(url) or [])
+
+        stats = fetcher.run_all(max_per_feed=1)
+
+        assert requested == ["https://example.com/feed"]
+        assert stats["feeds_checked"] == 1

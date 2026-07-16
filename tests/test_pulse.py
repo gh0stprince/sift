@@ -30,6 +30,90 @@ class TestPulseEngine:
         assert "mycelial networks how does it work" in variants
 
 
+class _PulseDB:
+    def add_pulse(self, _query: str, _depth: int) -> int:
+        return 42
+
+    def finish_pulse(self, _pulse_id: int, _pages_found: int) -> None:
+        """Satisfy the persistence boundary without a real database."""
+
+
+def _offline_engine(monkeypatch, seeds, graph):
+    engine = PulseEngine(
+        db=_PulseDB(), user_agent="test", sleeper=lambda _delay: None
+    )
+    calls = []
+    monkeypatch.setattr(engine, "_generate_query_variations", lambda _query: ["q"])
+    monkeypatch.setattr(
+        engine,
+        "_search_ddg",
+        lambda _query, max_results=10: [
+            {"url": url, "title": url, "body": "snippet"}
+            for url in seeds[:max_results]
+        ],
+    )
+
+    def fetch(url, pulse_id, link_depth):
+        calls.append((url, pulse_id, link_depth))
+        return len(calls), graph.get(url, [])
+
+    monkeypatch.setattr(engine, "_fetch_page", fetch)
+    return engine, calls
+
+
+def test_depth_zero_is_search_only(monkeypatch) -> None:
+    engine, calls = _offline_engine(
+        monkeypatch, ["https://a.example/"], {"https://a.example/": []}
+    )
+
+    result = engine.run("query", depth=0, max_pages=5)
+
+    assert result["pulse_id"] == 42
+    assert result["pages_found"] == 0
+    assert result["urls_discovered"] == 1
+    assert not calls
+
+
+def test_depth_two_follows_one_link_level_with_cycle_dedup(monkeypatch) -> None:
+    engine, calls = _offline_engine(
+        monkeypatch,
+        ["https://a.example/", "https://a.example/#fragment"],
+        {
+            "https://a.example/": [
+                "https://b.example/page",
+                "https://b.example/page#section",
+            ],
+            "https://b.example/page": ["https://a.example/"],
+        },
+    )
+
+    result = engine.run("query", depth=2, max_pages=10)
+
+    assert calls == [
+        ("https://a.example/", 42, 0),
+        ("https://b.example/page", 42, 1),
+    ]
+    assert result["pages_found"] == 2
+    assert result["urls_discovered"] == 2
+    assert result["total_depth"] == 2
+
+
+def test_max_pages_is_one_global_budget_across_depths(monkeypatch) -> None:
+    engine, calls = _offline_engine(
+        monkeypatch,
+        ["https://a.example/", "https://b.example/", "https://c.example/"],
+        {
+            "https://a.example/": ["https://d.example/"],
+            "https://b.example/": ["https://e.example/"],
+        },
+    )
+
+    result = engine.run("query", depth=3, max_pages=2)
+
+    assert len(calls) == 2
+    assert result["pages_found"] == 2
+
+
 @pytest.mark.integration
 def test_real_pulse() -> None:
     """Run a real pulse against DDG and verify results in the DB.

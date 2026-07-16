@@ -8,7 +8,7 @@ Ask a question. Searches index, pulses if empty, synthesizes answer with citatio
 
 ```bash
 sift ask "what is folk magic"
-sift ask folk-magic "what is folk magic" --wiki
+sift ask "what is folk magic" --wiki --wiki-slug folk-magic
 sift ask "latest ai news" --live
 ```
 
@@ -35,13 +35,25 @@ Full-text search the local index.
 sift search "folk magic"
 ```
 
-### `sift feed`
+### `sift feeds` and `sift ingest`
 
-Fetch and index RSS feeds.
+Register RSS/Atom feeds, then fetch and index their entries.
 
 ```bash
-sift feed
-sift feed --limit 20
+sift feeds init
+sift feeds list
+sift feeds add "My Blog" "https://example.com/feed.xml"
+sift ingest --max-per-feed 20
+```
+
+### Freshness-ranked search
+
+`search` normally orders results by FTS5 relevance. Add `--fresh` to boost
+relevant pages fetched more recently; the flag does not fetch the web or refresh
+stored pages.
+
+```bash
+sift search "folk magic" --fresh
 ```
 
 ### `sift crawl`

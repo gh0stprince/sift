@@ -1,8 +1,35 @@
 """CLI regression tests."""
 
+from pathlib import Path
+
 from click.testing import CliRunner
 
 from sift.cli import main
+
+
+def test_documented_cli_contract_matches_click_help() -> None:
+    """Core documented commands and options must remain valid Click contracts."""
+    runner = CliRunner()
+    cases = {
+        ("ask", "--help"): ("--limit", "--wiki", "--wiki-slug"),
+        ("feeds", "--help"): ("{list|add|init}",),
+        ("ingest", "--help"): ("--max-per-feed",),
+        ("search", "--help"): ("--fresh",),
+    }
+    for arguments, expected in cases.items():
+        result = runner.invoke(main, list(arguments))
+        assert result.exit_code == 0, result.output
+        for token in expected:
+            assert token in result.output
+
+    root = Path(__file__).resolve().parents[1]
+    usage = (root / "docs" / "Usage.md").read_text(encoding="utf-8")
+    faq = (root / "docs" / "FAQ.md").read_text(encoding="utf-8")
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    assert "sift feed\n" not in usage
+    assert "sift feed --limit" not in usage
+    assert "~/.local/share/sift/sift.db" not in faq
+    assert "--wiki llm-benchmarks-2024" not in readme
 
 
 class _EmptyDB:

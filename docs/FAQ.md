@@ -18,7 +18,7 @@ pip install -e .
 ### What dependencies are required?
 
 See `requirements.txt`. Key ones:
-- `duckduckgo_search` — web search
+- `ddgs` — web search
 - `trafilatura` — page content extraction
 - `httpx` — HTTP client for API calls
 - `click` — CLI framework
@@ -84,8 +84,8 @@ Make sure your `.env` file is in the working directory where you run `sift`.
 SQLite index. Use it to build a corpus on a topic before asking questions:
 
 ```bash
-sift pulse folk-magic --max-pages 50
-sift ask folk-magic "what is folk magic"
+sift pulse "folk magic" --max-pages 50
+sift ask "what is folk magic" --wiki --wiki-slug folk-magic
 ```
 
 ### How do I save answers to my wiki?
@@ -116,7 +116,7 @@ This runs an FTS5 full-text search against the local database.
 
 ### Where is the database stored?
 
-By default: `~/.local/share/sift/sift.db`. Override with `--db`:
+By default: `~/.sift/sift.db`. Override with `--db`:
 
 ```bash
 sift --db ./my-db.sqlite search "query"
@@ -127,7 +127,7 @@ sift --db ./my-db.sqlite search "query"
 Delete the SQLite file:
 
 ```bash
-rm ~/.local/share/sift/sift.db
+rm ~/.sift/sift.db
 ```
 
 ### What gets cached and for how long?
@@ -179,5 +179,7 @@ final answer paragraph. Use `--wiki` to get cleaned output.
 
 ### Search results seem stale
 
-Sift's freshness ranking formula divides the FTS5 `rank` by the age of the page
-in days. Add `fresh=True` in code or the ranking is automatic in `DB.search()`.
+Run `sift search "your query" --fresh` to boost relevant pages fetched more
+recently. Normal search orders by FTS5 relevance only. `--fresh` changes ranking;
+it does not fetch the web or update stored pages. Use `sift pulse`, `sift crawl`,
+or `sift ingest` to refresh the index first.

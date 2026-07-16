@@ -9,6 +9,8 @@ from urllib.parse import urlparse, urlsplit
 
 import requests
 
+from sift.outbound import OutboundPolicy, UnsafeURLError, safe_get
+
 
 @dataclass(frozen=True)
 class RobotsDecision:
@@ -41,6 +43,7 @@ class RobotsPolicy:
         user_agent: str,
         refresh_seconds: float = 3600.0,
         clock=time.monotonic,
+        url_policy: OutboundPolicy | None = None,
     ) -> None:
         self.session = session
         self.user_agent = user_agent
@@ -48,6 +51,7 @@ class RobotsPolicy:
         self.refresh_seconds = refresh_seconds
         self._clock = clock
         self._cache: dict[str, _CachedPolicy] = {}
+        self.url_policy = url_policy or OutboundPolicy()
 
     @staticmethod
     def origin(url: str) -> str:
@@ -68,8 +72,10 @@ class RobotsPolicy:
             return cached
 
         try:
-            response = self.session.get(
+            response = safe_get(
+                self.session,
                 f"{origin}/robots.txt",
+                policy=self.url_policy,
                 timeout=15,
                 headers={"User-Agent": self.user_agent},
             )
@@ -167,6 +173,10 @@ class RobotsPolicy:
 
     def check(self, url: str) -> RobotsDecision:
         """Return whether Sift may fetch *url* and a non-sensitive reason."""
+        try:
+            self.url_policy.validate(url)
+        except UnsafeURLError:
+            return RobotsDecision(False, "unsafe_address")
         origin = self.origin(url)
         if not origin:
             return RobotsDecision(False, "invalid_origin")

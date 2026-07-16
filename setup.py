@@ -6,9 +6,12 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     license="Personal Use Only (See LICENSE file)",
+    python_requires=">=3.10",
     install_requires=[
-        "duckduckgo_search>=6.2.0",
+        "ddgs>=9.0.0",
+        "python-dotenv>=1.0.0",
         "trafilatura>=2.0.0",
+        "lxml_html_clean>=0.4.0",
         "requests>=2.30.0",
         "httpx>=0.28.0",
         "click>=8.0.0",

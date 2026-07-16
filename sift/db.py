@@ -4,10 +4,27 @@ import os
 import re
 import sqlite3
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 DB_DIR = os.path.expanduser("~/.sift")
 DB_PATH = os.path.join(DB_DIR, "sift.db")
 KEY_ENV = "SIFT_DB_KEY"
+
+
+def _normalize_source_url(url):
+    """Return a stable HTTP(S) source identity without fragments/default ports."""
+    parsed = urlsplit(url.strip())
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower()
+    if not scheme or not host:
+        return url.strip()
+    if ":" in host:
+        host = f"[{host}]"
+    port = parsed.port
+    if port and not ((scheme == "http" and port == 80) or (scheme == "https" and port == 443)):
+        host = f"{host}:{port}"
+    path = parsed.path.rstrip("/") or ""
+    return urlunsplit((scheme, host, path, parsed.query, ""))
 
 
 class DatabaseError(RuntimeError):
@@ -91,6 +108,7 @@ class DB:
         self.conn.row_factory = _cipher_row_factory if self.encrypted else sqlite3.Row
         self._configure()
         self._init_schema()
+        self._migrate_source_uniqueness()
 
     def _configure(self):
         self.conn.execute("PRAGMA foreign_keys=ON")
@@ -107,9 +125,10 @@ class DB:
             CREATE TABLE IF NOT EXISTS sources (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
-                feed_url TEXT NOT NULL UNIQUE,
+                feed_url TEXT NOT NULL,
                 kind TEXT NOT NULL DEFAULT 'feed',
-                added_at TEXT NOT NULL DEFAULT (datetime('now'))
+                added_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(feed_url, kind)
             );
 
             CREATE TABLE IF NOT EXISTS pages (
@@ -153,8 +172,55 @@ class DB:
             END;
         """)
 
+    def _migrate_source_uniqueness(self):
+        """Upgrade the legacy URL-only source constraint without losing IDs."""
+        indexes = self.conn.execute("PRAGMA index_list(sources)").fetchall()
+        legacy = False
+        for index in indexes:
+            if not index["unique"]:
+                continue
+            columns = self.conn.execute(
+                f"PRAGMA index_info('{index['name']}')"
+            ).fetchall()
+            if [column["name"] for column in columns] == ["feed_url"]:
+                legacy = True
+                break
+        if not legacy:
+            return
+
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            self.conn.executescript("""
+                BEGIN;
+                CREATE TABLE sources_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    feed_url TEXT NOT NULL,
+                    kind TEXT NOT NULL DEFAULT 'feed',
+                    added_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(feed_url, kind)
+                );
+                INSERT INTO sources_new (id, name, feed_url, kind, added_at)
+                    SELECT id, name, feed_url, kind, added_at FROM sources;
+                DROP TABLE sources;
+                ALTER TABLE sources_new RENAME TO sources;
+                COMMIT;
+            """)
+        except Exception:
+            self.conn.rollback()
+            raise
+        finally:
+            self.conn.execute("PRAGMA foreign_keys=ON")
+
     def close(self):
         self.conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
     @classmethod
     def migrate_plaintext(cls, source_path, destination_path, key):
@@ -184,12 +250,34 @@ class DB:
             destination.close()
 
     def add_source(self, name, feed_url, kind="feed"):
-        cursor = self.conn.execute(
-            "INSERT INTO sources (name, feed_url, kind) VALUES (?, ?, ?)",
-            (name, feed_url, kind),
-        )
-        self.conn.commit()
-        return cursor.lastrowid
+        normalized = _normalize_source_url(feed_url)
+        rows = self.conn.execute(
+            "SELECT id, feed_url FROM sources WHERE kind = ?", (kind,)
+        ).fetchall()
+        for row in rows:
+            if _normalize_source_url(row["feed_url"]) == normalized:
+                if row["feed_url"] != normalized:
+                    self.conn.execute(
+                        "UPDATE sources SET feed_url = ? WHERE id = ?",
+                        (normalized, row["id"]),
+                    )
+                    self.conn.commit()
+                return row["id"]
+        try:
+            cursor = self.conn.execute(
+                "INSERT INTO sources (name, feed_url, kind) VALUES (?, ?, ?)",
+                (name, normalized, kind),
+            )
+            self.conn.commit()
+            return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            row = self.conn.execute(
+                "SELECT id FROM sources WHERE feed_url = ? AND kind = ?",
+                (normalized, kind),
+            ).fetchone()
+            if row is None:
+                raise
+            return row["id"]
 
     def add_page(self, url, title, content, source_id=None, pulse_id=None, link_depth=0):
         cursor = self.conn.execute(
@@ -204,6 +292,23 @@ class DB:
         )
         self.conn.commit()
         return cursor.lastrowid
+
+    def add_pulse(self, query, depth):
+        """Create a pulse record and return its stable identifier."""
+        cursor = self.conn.execute(
+            "INSERT INTO pulses (query, depth) VALUES (?, ?)", (query, depth)
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def finish_pulse(self, pulse_id, pages_found):
+        """Mark a pulse complete with its final global page count."""
+        self.conn.execute(
+            "UPDATE pulses SET finished_at=datetime('now'),"
+            " pages_found=? WHERE id=?",
+            (pages_found, pulse_id),
+        )
+        self.conn.commit()
 
     def search(self, query, limit=10, fresh=False):
         if not query or not query.strip() or limit < 1:
@@ -222,16 +327,27 @@ class DB:
                    WHERE pages_fts MATCH ? {order} LIMIT ?"""
         return [dict(row) for row in self.conn.execute(sql, (query, limit)).fetchall()]
 
-    def get_sources(self):
-        return [dict(row) for row in self.conn.execute("SELECT * FROM sources ORDER BY added_at DESC")]
+    def get_sources(self, kind=None):
+        sql = "SELECT * FROM sources"
+        params = ()
+        if kind is not None:
+            sql += " WHERE kind = ?"
+            params = (kind,)
+        sql += " ORDER BY added_at DESC, id DESC"
+        return [dict(row) for row in self.conn.execute(sql, params)]
 
     def get_stats(self):
         cursor = self.conn.execute("""
             SELECT (SELECT COUNT(*) FROM pages) AS total_pages,
                    (SELECT COUNT(*) FROM sources) AS total_sources,
+                   (SELECT COUNT(*) FROM sources WHERE kind = 'feed') AS feed_sources,
+                   (SELECT COUNT(*) FROM sources WHERE kind = 'crawl') AS crawl_sources,
                    (SELECT COUNT(*) FROM pulses) AS total_pulses,
                    (SELECT COUNT(*) FROM pages WHERE pulse_id IS NOT NULL) AS pulse_pages,
-                   (SELECT COUNT(*) FROM pages WHERE source_id IS NOT NULL) AS feed_pages,
+                   (SELECT COUNT(*) FROM pages p JOIN sources s ON s.id = p.source_id
+                    WHERE s.kind = 'feed') AS feed_pages,
+                   (SELECT COUNT(*) FROM pages p JOIN sources s ON s.id = p.source_id
+                    WHERE s.kind = 'crawl') AS crawl_pages,
                    (SELECT MAX(fetched_at) FROM pages) AS newest_page
         """)
         return dict(cursor.fetchone())

@@ -31,8 +31,48 @@ def test_write_raw_source_uses_flat_obsidian_source_property(
     assert "source:\n" in frontmatter
     assert "sources:\n" not in frontmatter
     assert "  - url:" not in frontmatter
-    assert "  - https://example.com/first" in frontmatter
-    assert "  - https://example.com/second?part=2#details" in frontmatter
+    assert '  - "https://example.com/first"' in frontmatter
+    assert '  - "https://example.com/second?part=2#details"' in frontmatter
 
     capture = read_capture(path)
+    assert capture.metadata["source_urls"] == urls
+
+
+def test_write_raw_source_appends_once_without_corrupting_frontmatter(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A repeated slug keeps one valid frontmatter block and one copy per answer."""
+    monkeypatch.setattr("sift.wiki.WIKI_RAW_DIR", tmp_path)
+
+    path = Path(write_raw_source(
+        "Repeated", "repeated", "first query", "First answer\n\n---\n\nBody rule.", []
+    ))
+    write_raw_source(
+        "Repeated", "repeated", "second query", "Second answer\n\n---\n\nAnother rule.", []
+    )
+
+    text = path.read_text(encoding="utf-8")
+    capture = read_capture(path)
+    frontmatter = text.split("\n---\n", 1)[0]
+
+    assert frontmatter.count("updated:") == 1
+    assert capture.metadata["title"] == "Repeated"
+    assert text.count("First answer") == 1
+    assert text.count("Second answer") == 1
+    assert text.count("## Update -") == 1
+    assert not list(tmp_path.glob(".repeated.md.*"))
+
+
+def test_write_raw_source_round_trips_yaml_scalars(monkeypatch, tmp_path: Path) -> None:
+    """Quotes, colons, slashes, Unicode and newlines remain scalar values."""
+    monkeypatch.setattr("sift.wiki.WIKI_RAW_DIR", tmp_path)
+    title = 'A "quoted": title \\ with café\nand a second line'
+    query = 'why: "this" \\ path?\nsecond line Ω'
+    urls = ['https://example.com/a:b?quote="yes"\\path', "https://例.example/資料"]
+
+    path = Path(write_raw_source(title, "hostile", query, "Safe answer.", urls))
+    capture = read_capture(path)
+
+    assert capture.metadata["title"] == title
+    assert capture.metadata["source_query"] == query
     assert capture.metadata["source_urls"] == urls

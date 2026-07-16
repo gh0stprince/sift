@@ -1,11 +1,11 @@
-duckduckgo_search>=6.2.0
-# Pulse imports the maintained DDGS client directly.
 ddgs>=9.0.0
 trafilatura>=2.0.0
+lxml_html_clean>=0.4.0
 requests>=2.30.0
 httpx>=0.28.0
 click>=8.0.0
 pytest>=8.0.0
+setuptools>=68.0.0
 python-dotenv>=1.0.0
 # Optional: install with `pip install -e .[encrypted]` for SQLCipher support.
 # sqlcipher3>=0.6.2

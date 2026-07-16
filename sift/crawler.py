@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 import requests
 import trafilatura
 
+from sift.outbound import OutboundPolicy, UnsafeURLError, safe_get
 from sift.pulse import PulseEngine
 from sift.robots import RobotsPolicy
 
@@ -32,9 +33,16 @@ class DomainCrawler:
         Custom User-Agent header value.
     """
 
-    def __init__(self, db: Any, user_agent: str | None = None) -> None:
+    def __init__(
+        self,
+        db: Any,
+        user_agent: str | None = None,
+        *,
+        session=None,
+        resolver=None,
+    ) -> None:
         self.db = db
-        self.session = requests.Session()
+        self.session = session or requests.Session()
         configured_user_agent = user_agent or "Sift/0.1.0 (+https://github.com/gh0st/sift)"
         self.session.headers.update(
             {
@@ -45,8 +53,21 @@ class DomainCrawler:
                 ),
             }
         )
-        self.robots = RobotsPolicy(self.session, configured_user_agent)
+        self.url_policy = OutboundPolicy(resolver=resolver)
+        self.robots = RobotsPolicy(
+            self.session, configured_user_agent, url_policy=self.url_policy
+        )
         self.skipped: dict[str, int] = {}
+
+    def close(self) -> None:
+        """Release the crawler's HTTP session."""
+        self.session.close()
+
+    def __enter__(self) -> DomainCrawler:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
 
     # ------------------------------------------------------------------
     # URL helpers
@@ -110,7 +131,13 @@ class DomainCrawler:
             if not self._allowed(url):
                 continue
             try:
-                resp = self.session.get(url, timeout=15)
+                resp = safe_get(
+                    self.session,
+                    url,
+                    policy=self.url_policy,
+                    timeout=15,
+                    authorize=self._allowed,
+                )
                 resp.raise_for_status()
                 sitemaps.append(url)
             except requests.RequestException:
@@ -133,7 +160,13 @@ class DomainCrawler:
         if not self._allowed(url):
             return []
         try:
-            resp = self.session.get(url, timeout=30)
+            resp = safe_get(
+                self.session,
+                url,
+                policy=self.url_policy,
+                timeout=30,
+                authorize=self._allowed,
+            )
             resp.raise_for_status()
         except requests.RequestException:
             return []
@@ -189,7 +222,11 @@ class DomainCrawler:
         """
         # Create a temporary PulseEngine just for link extraction.
         # We don't need a real DB here — we only call _extract_links.
-        pulse = PulseEngine(db=self.db)
+        pulse = PulseEngine(
+            db=self.db,
+            session=self.session,
+            resolver=self.url_policy.resolver,
+        )
         root_norm = root.rstrip("/")
 
         visited: set[str] = set()
@@ -206,7 +243,13 @@ class DomainCrawler:
                 continue
 
             try:
-                resp = self.session.get(current, timeout=30)
+                resp = safe_get(
+                    self.session,
+                    current,
+                    policy=self.url_policy,
+                    timeout=30,
+                    authorize=self._allowed,
+                )
                 resp.raise_for_status()
             except requests.RequestException:
                 continue
@@ -261,6 +304,15 @@ class DomainCrawler:
                 "pages_fetched": 0,
                 "errors": 1,
             }
+        try:
+            self.url_policy.validate(root)
+        except UnsafeURLError:
+            return {
+                "source_id": None,
+                "urls_discovered": 0,
+                "pages_fetched": 0,
+                "errors": 1,
+            }
 
         # Create a source record
         source_id = self.db.add_source(
@@ -303,7 +355,13 @@ class DomainCrawler:
                 continue
 
             try:
-                resp = self.session.get(page_url, timeout=30)
+                resp = safe_get(
+                    self.session,
+                    page_url,
+                    policy=self.url_policy,
+                    timeout=30,
+                    authorize=self._allowed,
+                )
                 resp.raise_for_status()
             except requests.RequestException:
                 errors += 1

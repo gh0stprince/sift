@@ -11,6 +11,8 @@ from typing import Any
 import pytest
 
 from sift.crawler import DomainCrawler
+from sift.db import DB
+from sift.outbound import OutboundPolicy
 from sift.robots import RobotsPolicy
 
 
@@ -132,8 +134,29 @@ class TestDiscoverSitemaps:
         """Read Sitemap directives without making a live network request."""
         session = _RobotsSession()
         crawler.session = session  # type: ignore[assignment]
-        crawler.robots = RobotsPolicy(session, "Sift-Test/0.1")
+        crawler.robots = RobotsPolicy(
+            session,
+            "Sift-Test/0.1",
+            url_policy=OutboundPolicy(resolver=lambda _host: ["93.184.216.34"]),
+        )
         root = "https://example.com"
         sitemaps = crawler._discover_sitemaps(root)
         assert sitemaps == ["https://example.com/map.xml"]
         assert session.calls == ["https://example.com/robots.txt"]
+
+
+def test_repeat_crawl_reuses_real_database_source(monkeypatch, tmp_path) -> None:
+    """Running one origin twice is a refresh, not a uniqueness crash."""
+    database = DB(tmp_path / "sift.db")
+    crawler = DomainCrawler(database)
+    monkeypatch.setattr(crawler, "_discover_sitemaps", lambda _root: [])
+    monkeypatch.setattr(crawler, "_crawl_from_root", lambda _root, max_pages: [])
+
+    try:
+        first = crawler.run("https://Example.COM/path", max_pages=1)
+        second = crawler.run("https://example.com/other", max_pages=1)
+    finally:
+        crawler.close()
+        database.close()
+
+    assert second["source_id"] == first["source_id"]

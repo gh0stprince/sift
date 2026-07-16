@@ -88,13 +88,29 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     if end < 0:
         raise CurationError("raw capture frontmatter is unterminated")
     metadata: dict[str, Any] = {}
+    active_list: str | None = None
     for line in text[4:end].splitlines():
+        if line.startswith("  - ") and active_list:
+            raw_value = line[4:].strip()
+            try:
+                value = json.loads(raw_value)
+            except json.JSONDecodeError:
+                value = raw_value
+            metadata.setdefault(active_list, []).append(value)
+            continue
         if ":" not in line or line.startswith(" "):
             continue
         key, value = line.split(":", 1)
-        value = value.strip().strip('"')
-        if value:
-            metadata[key.strip()] = value
+        key, value = key.strip(), value.strip()
+        active_list = key if not value else None
+        if not value:
+            continue
+        try:
+            metadata[key] = json.loads(value)
+        except json.JSONDecodeError:
+            metadata[key] = value.strip('"')
+    if "source" in metadata:
+        metadata["source_urls"] = metadata.pop("source")
     return metadata, text[end + 4:].strip()
 
 
@@ -102,7 +118,10 @@ def read_capture(path: Path) -> RawCapture:
     raw = path.read_bytes()
     text = raw.decode("utf-8")
     metadata, body = _parse_frontmatter(text)
-    metadata["source_urls"] = list(dict.fromkeys(re.findall(r"https?://[^\s\)\]>]+", text)))
+    metadata.setdefault(
+        "source_urls",
+        list(dict.fromkeys(re.findall(r"https?://[^\s\)\]>\"']+", text))),
+    )
     return RawCapture(path, metadata, body, hashlib.sha256(raw).hexdigest())
 
 
@@ -216,7 +235,7 @@ def _page_content(result: dict[str, Any], capture: RawCapture, links: list[str],
     for url in source_urls:
         lines += [f"  - url: {_yaml_string(url)}",
                   f"    query: {_yaml_string(query_display)}",
-                  f"    captured: {capture.metadata.get('ingested', today)}",
+                  f"    captured: {_yaml_string(str(capture.metadata.get('ingested', today)))}",
                   f"    sha256: {capture.digest}"]
     safe_title = _inline_text(title)
     if conflicts:

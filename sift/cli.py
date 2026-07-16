@@ -47,6 +47,9 @@ def main(ctx, db, encrypted):
     resolved = Path(db).resolve() if db else None
     try:
         ctx.obj["db"] = DB(db_path=resolved, encrypted=encrypted)
+        close_db = getattr(ctx.obj["db"], "close", None)
+        if close_db is not None:
+            ctx.call_on_close(close_db)
     except Exception as exc:
         click.secho(f"Error initializing database: {exc}", fg="red", err=True)
         ctx.exit(1)
@@ -102,6 +105,7 @@ def pulse(ctx, query, depth, max_pages):
 
     db = ctx.obj["db"]
     engine = PulseEngine(db)
+    ctx.call_on_close(engine.close)
     click.echo(
         f"🔍 Running pulse for '{query}'"
         f" (depth={depth}, max_pages={max_pages})..."
@@ -126,6 +130,7 @@ def feeds(ctx, action, args):
 
     db = ctx.obj["db"]
     fetcher = FeedFetcher(db)
+    ctx.call_on_close(fetcher.close)
 
     if action == "list":
         sources = fetcher.list_feeds()
@@ -165,6 +170,7 @@ def ingest(ctx, max_per_feed):
 
     db = ctx.obj["db"]
     fetcher = FeedFetcher(db)
+    ctx.call_on_close(fetcher.close)
     click.echo(f"📡 Ingesting up to {max_per_feed} entries per feed...")
     stats = fetcher.run_all(max_per_feed=max_per_feed)
     click.echo(
@@ -185,8 +191,10 @@ def stats(ctx):
     click.secho("📊 Sift Index Stats", bold=True)
     click.echo(f"  total_pages:    {s['total_pages']}")
     click.echo(f"  feed_pages:     {s['feed_pages']}")
+    click.echo(f"  crawl_pages:    {s['crawl_pages']}")
     click.echo(f"  pulse_pages:    {s['pulse_pages']}")
-    click.echo(f"  feeds_tracked:  {s['total_sources']}")
+    click.echo(f"  feeds_tracked:  {s['feed_sources']}")
+    click.echo(f"  crawls_tracked: {s['crawl_sources']}")
     click.echo(f"  total_pulses:   {s['total_pulses']}")
     click.echo(f"  newest_page:    {s['newest_page'] or 'never'}")
 
@@ -280,6 +288,7 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
         from sift.pulse import PulseEngine
         from sift.synthesize import build_context_from_snippets
         engine = PulseEngine(ctx.obj["db"])
+        ctx.call_on_close(engine.close)
         variations = engine._generate_query_variations(query)
 
         all_urls = {}
@@ -358,6 +367,7 @@ def ask(ctx, query, limit, no_llm, live, wiki, wiki_slug):
     if not results:
         click.echo("No results in index. Running a quick pulse...")
         engine = PulseEngine(db)
+        ctx.call_on_close(engine.close)
         engine.run(query, depth=1, max_pages=10)
         results = db.search(query, limit=limit)
 
@@ -441,7 +451,7 @@ def crawl(ctx, url, max_pages):
 
     db = ctx.obj["db"]
     crawler_obj = DomainCrawler(db)
-
+    ctx.call_on_close(crawler_obj.close)
     click.echo(f"Spider crawling {url}...")
     click.echo(f"   Max pages: {max_pages}")
 
