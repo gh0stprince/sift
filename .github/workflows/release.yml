@@ -27,14 +27,14 @@ jobs:
         run: |
           python -m venv /tmp/sift-wheel
           /tmp/sift-wheel/bin/pip install --force-reinstall dist/*.whl
-          /tmp/sift-wheel/bin/python -c "import sift.cli; import sift.crawler; import sift.curation; import sift.db; import sift.feeds; import sift.pulse; import sift.robots; import sift.synthesize; import sift.wiki"
+          /tmp/sift-wheel/bin/python -c "import sift.cli; import sift.crawler; import sift.curation; import sift.db; import sift.feeds; import sift.outbound; import sift.pulse; import sift.robots; import sift.synthesize; import sift.wiki"
           /tmp/sift-wheel/bin/sift --help
           /tmp/sift-wheel/bin/python -m sift --help
       - name: Smoke test clean source install
         run: |
           python -m venv /tmp/sift-sdist
           /tmp/sift-sdist/bin/pip install --force-reinstall dist/*.tar.gz
-          /tmp/sift-sdist/bin/python -c "import sift.cli; import sift.crawler; import sift.curation; import sift.db; import sift.feeds; import sift.pulse; import sift.robots; import sift.synthesize; import sift.wiki"
+          /tmp/sift-sdist/bin/python -c "import sift.cli; import sift.crawler; import sift.curation; import sift.db; import sift.feeds; import sift.outbound; import sift.pulse; import sift.robots; import sift.synthesize; import sift.wiki"
           /tmp/sift-sdist/bin/sift --help
           /tmp/sift-sdist/bin/python -m sift --help
       - name: Publish GitHub release
