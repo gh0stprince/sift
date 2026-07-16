@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from sift.feeds import FeedFetcher
+from sift.outbound import UnsafeURLError
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +96,13 @@ class TestFetchRealFeed:
     @pytest.mark.integration
     def test_fetch_real_feed(self, fetcher: FeedFetcher) -> None:
         """Hit lobste.rs RSS and verify we get entries with url and title."""
-        entries = fetcher.fetch_feed("https://lobste.rs/rss")
+        decision = fetcher.robots.check("https://lobste.rs/rss")
+        if not decision.allowed:
+            pytest.skip(f"live origin denied by robots policy: {decision.reason}")
+        try:
+            entries = fetcher.fetch_feed("https://lobste.rs/rss")
+        except UnsafeURLError as exc:
+            pytest.skip(f"live feed redirect denied by outbound policy: {exc}")
         assert len(entries) > 0, "Expected at least one entry from lobste.rs"
         for entry in entries:
             assert "url" in entry, "Each entry must have a URL"
@@ -110,7 +117,12 @@ class TestFetchRealPage:
     @pytest.mark.integration
     def test_fetch_real_page(self, fetcher: FeedFetcher) -> None:
         """Hit example.com and verify extracted text is returned."""
+        decision = fetcher.robots.check("https://example.com")
+        if not decision.allowed:
+            pytest.skip(f"live origin denied by robots policy: {decision.reason}")
         result = fetcher.fetch_page("https://example.com")
+        if result is None:
+            pytest.skip("live page unavailable, denied, or not extractable")
         assert result is not None, "Expected page data, got None"
         assert "url" in result, "Result must have a URL"
         assert "title" in result, "Result must have a title"

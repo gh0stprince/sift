@@ -13,7 +13,7 @@ Sift is an AI-powered web research tool designed for personal knowledge workflow
 |-------|-----------|-------|
 | Language | Python 3.10+ | Uses `str \| None` union syntax, `from __future__ import annotations` |
 | CLI Framework | Click 8.0+ | Command groups, subcommands, option parsing |
-| Web Search | duckduckgo_search 6.2+ | DDG text search with rate limiting |
+| Web Search | ddgs 9.0+ | DDG text search with rate limiting |
 | Content Extraction | trafilatura 2.0+ | HTML → clean text with metadata |
 | HTTP Client | requests 2.30+, httpx 0.28+ | requests for sync, httpx for streaming LLM |
 | Database | SQLite 3+ | Native FTS5 virtual table for full-text search |

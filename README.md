@@ -33,7 +33,8 @@ export AUXILIARY_APPROVAL_API_KEY="your-api-key"
 ```
 
 Optional environment variables:
-- `AUXILIARY_APPROVAL_MODEL` — Model to use (default: `deepseek-v4-flash`)
+- `OPENAI_MODEL` — Model to use (default: `qwen3.7-plus`)
+- `OPENAI_BASE_URL` — OpenAI-compatible endpoint
 
 ## Usage
 
@@ -68,7 +69,7 @@ Default feeds include: Lobsters, Hacker News, ArXiv (CS.AI, CS.LG, q-bio.NC), Le
 ```bash
 sift ask "What is the transformer architecture?"
 sift ask "Explain RLHF" --limit 5          # use top 5 sources
-sift ask "Latest LLM benchmarks" --wiki llm-benchmarks-2024
+sift ask "Latest LLM benchmarks" --wiki --wiki-slug llm-benchmarks-2024
 ```
 
 The `--wiki` flag saves the raw results to `~/llm-wiki/raw/queries/<slug>.md`.

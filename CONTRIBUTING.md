@@ -221,7 +221,7 @@ pytest -k "feed"                # tests matching keyword
 
 - Each module in `sift/` should have a corresponding test file in `tests/`.
 - Use pytest's `tmp_path` fixture for filesystem tests.
-- Mock network calls (`httpx`, `duckduckgo_search`) so tests are fast and
+- Mock network calls (`httpx`, `ddgs`) so tests are fast and
   don't depend on external services.
 - Name test functions `test_<thing_being_tested>`.
 
