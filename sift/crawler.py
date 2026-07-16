@@ -11,8 +11,8 @@ from urllib.parse import urlparse
 import requests
 import trafilatura
 
+from sift.links import extract_links
 from sift.outbound import OutboundPolicy, PinnedSession, UnsafeURLError, safe_get
-from sift.pulse import PulseEngine
 from sift.robots import RobotsPolicy
 
 
@@ -228,10 +228,10 @@ class DomainCrawler:
     def _crawl_from_root(self, root: str, max_pages: int = 100) -> list[str]:
         """BFS crawl from *root* following internal links.
 
-        Uses the same link-extraction pattern as ``PulseEngine._extract_links``
-        by creating a temporary ``PulseEngine`` instance.
+        Uses the shared ``sift.links.extract_links`` helper for link
+        extraction from fetched HTML.
 
-        Sleeps 0.5 s between fetches.  Returns a list of discovered URLs.
+        Sleeps 0.5 s between fetches.  Returns a list of discovered URLs.
         """
         root_norm = root.rstrip("/")
 
@@ -265,7 +265,7 @@ class DomainCrawler:
             discovered.append(current)
 
             html = resp.text
-            links = PulseEngine._extract_links(html, current)
+            links = extract_links(html, current)
 
             for link in links:
                 # Strip URL fragments to avoid duplicate entries
