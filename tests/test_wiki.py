@@ -63,6 +63,38 @@ def test_write_raw_source_appends_once_without_corrupting_frontmatter(
     assert not list(tmp_path.glob(".repeated.md.*"))
 
 
+def test_repeated_slug_merges_query_and_source_provenance(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Every appended update remains discoverable by downstream curation."""
+    monkeypatch.setattr("sift.wiki.WIKI_RAW_DIR", tmp_path)
+
+    path = Path(
+        write_raw_source(
+            "Repeated",
+            "repeated",
+            "first query",
+            "First answer.",
+            ["https://example.com/first"],
+        )
+    )
+    write_raw_source(
+        "Repeated",
+        "repeated",
+        "second query",
+        "Second answer.",
+        ["https://example.com/second"],
+    )
+
+    capture = read_capture(path)
+
+    assert capture.metadata["source_query"] == ["first query", "second query"]
+    assert capture.metadata["source_urls"] == [
+        "https://example.com/first",
+        "https://example.com/second",
+    ]
+
+
 def test_write_raw_source_round_trips_yaml_scalars(monkeypatch, tmp_path: Path) -> None:
     """Quotes, colons, slashes, Unicode and newlines remain scalar values."""
     monkeypatch.setattr("sift.wiki.WIKI_RAW_DIR", tmp_path)
