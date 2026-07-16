@@ -1,10 +1,13 @@
 import os
 import tempfile
+import importlib.util
 
 from pathlib import Path
 
 import pytest
 from sift.db import DB
+
+HAS_SQLCIPHER = importlib.util.find_spec("sqlcipher3") is not None
 
 
 @pytest.fixture
@@ -165,6 +168,10 @@ def test_search_fresh_boost():
     db.close()
 
 
+@pytest.mark.skipif(
+    not HAS_SQLCIPHER,
+    reason="sqlcipher3 is required for encrypted database tests",
+)
 def test_encrypted_create_open_and_search(tmp_path):
     """SQLCipher stores searchable content without plaintext SQLite records."""
     path = tmp_path / "encrypted.db"
@@ -185,6 +192,10 @@ def test_encrypted_mode_requires_key(tmp_path):
         DB(tmp_path / "missing.db", encrypted=True, key="")
 
 
+@pytest.mark.skipif(
+    not HAS_SQLCIPHER,
+    reason="sqlcipher3 is required for encrypted database tests",
+)
 def test_encrypted_mode_rejects_wrong_key(tmp_path):
     """A wrong key is an actionable failure, never a plaintext fallback."""
     path = tmp_path / "encrypted.db"
@@ -195,6 +206,10 @@ def test_encrypted_mode_rejects_wrong_key(tmp_path):
         DB(path, encrypted=True, key="wrong-key")
 
 
+@pytest.mark.skipif(
+    not HAS_SQLCIPHER,
+    reason="sqlcipher3 is required for encrypted database tests",
+)
 def test_explicit_plaintext_migration(tmp_path):
     """Migration copies data to a new encrypted file and preserves the source."""
     source_path = tmp_path / "plain.db"
