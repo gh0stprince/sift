@@ -114,6 +114,88 @@ def test_max_pages_is_one_global_budget_across_depths(monkeypatch) -> None:
     assert result["pages_found"] == 2
 
 
+def test_max_pages_limits_failed_fetch_attempts(monkeypatch) -> None:
+    """The global page budget bounds requests, not only successful stores."""
+    engine, calls = _offline_engine(
+        monkeypatch,
+        [
+            "https://a.example/",
+            "https://b.example/",
+            "https://c.example/",
+        ],
+        {},
+    )
+    monkeypatch.setattr(
+        engine,
+        "_fetch_page",
+        lambda url, pulse_id, link_depth: (
+            calls.append((url, pulse_id, link_depth)) or (None, [])
+        ),
+    )
+
+    result = engine.run("query", depth=1, max_pages=2)
+
+    assert len(calls) == 2
+    assert result["pages_found"] == 0
+
+
+@pytest.mark.parametrize("depth", [-1, 4])
+def test_depth_rejects_values_outside_documented_range(monkeypatch, depth) -> None:
+    engine, _calls = _offline_engine(monkeypatch, [], {})
+
+    with pytest.raises(ValueError, match="between 0 and 3"):
+        engine.run("query", depth=depth, max_pages=5)
+
+
+def test_max_pages_rejects_non_positive_values(monkeypatch) -> None:
+    engine, _calls = _offline_engine(monkeypatch, [], {})
+
+    with pytest.raises(ValueError, match="positive integer"):
+        engine.run("query", depth=1, max_pages=0)
+
+
+def test_seed_frontier_reserves_budget_for_requested_depth(monkeypatch) -> None:
+    """Many search seeds must not make depth two and three indistinguishable."""
+    seeds = [f"https://seed-{index}.example/" for index in range(4)]
+    graph = {
+        seeds[0]: ["https://child.example/"],
+        "https://child.example/": ["https://grandchild.example/"],
+    }
+    engine, calls = _offline_engine(monkeypatch, seeds, graph)
+
+    result = engine.run("query", depth=3, max_pages=3)
+
+    assert calls == [
+        (seeds[0], 42, 0),
+        ("https://child.example/", 42, 1),
+        ("https://grandchild.example/", 42, 2),
+    ]
+    assert result["pages_found"] == 3
+
+
+@pytest.mark.parametrize(
+    ("depth", "expected_max_link_depth"),
+    [(0, None), (1, 0), (2, 1), (3, 2)],
+)
+def test_multi_seed_traversal_reaches_each_requested_depth(
+    monkeypatch, depth, expected_max_link_depth
+) -> None:
+    seeds = [f"https://seed-{index}.example/" for index in range(4)]
+    graph = {
+        seeds[0]: ["https://child.example/"],
+        "https://child.example/": ["https://grandchild.example/"],
+    }
+    engine, calls = _offline_engine(monkeypatch, seeds, graph)
+
+    engine.run("query", depth=depth, max_pages=4)
+
+    assert len(calls) <= 4
+    assert (
+        max((link_depth for _url, _pulse_id, link_depth in calls), default=None)
+        == expected_max_link_depth
+    )
+
+
 @pytest.mark.integration
 def test_real_pulse() -> None:
     """Run a real pulse against DDG and verify results in the DB.

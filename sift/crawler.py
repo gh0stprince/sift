@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import requests
 import trafilatura
 
-from sift.outbound import OutboundPolicy, UnsafeURLError, safe_get
+from sift.outbound import OutboundPolicy, PinnedSession, UnsafeURLError, safe_get
 from sift.pulse import PulseEngine
 from sift.robots import RobotsPolicy
 
@@ -42,7 +42,7 @@ class DomainCrawler:
         resolver=None,
     ) -> None:
         self.db = db
-        self.session = session or requests.Session()
+        self.session = session or PinnedSession()
         configured_user_agent = user_agent or "Sift/0.1.0 (+https://github.com/gh0st/sift)"
         self.session.headers.update(
             {
@@ -92,6 +92,10 @@ class DomainCrawler:
             self.skipped[decision.reason] = self.skipped.get(decision.reason, 0) + 1
         return decision.allowed
 
+    def _crawl_allowed(self, url: str, root: str) -> bool:
+        """Keep every crawl hop on the requested host and within robots policy."""
+        return self._is_internal_url(url, root) and self._allowed(url)
+
 
     @staticmethod
     def _is_internal_url(url: str, root: str) -> bool:
@@ -136,7 +140,7 @@ class DomainCrawler:
                     url,
                     policy=self.url_policy,
                     timeout=15,
-                    authorize=self._allowed,
+                    authorize=lambda candidate: self._crawl_allowed(candidate, root),
                 )
                 resp.raise_for_status()
                 sitemaps.append(url)
@@ -149,7 +153,9 @@ class DomainCrawler:
     # Sitemap parsing
     # ------------------------------------------------------------------
 
-    def _parse_sitemap(self, url: str, _depth: int = 0) -> list[str]:
+    def _parse_sitemap(
+        self, url: str, _depth: int = 0, *, root: str | None = None
+    ) -> list[str]:
         """Fetch and parse a sitemap XML document.
 
         Handles sitemap indexes (``<sitemapindex>`` with nested
@@ -157,7 +163,8 @@ class DomainCrawler:
 
         Returns a list of page URLs found in the sitemap.
         """
-        if not self._allowed(url):
+        crawl_root = root or self._get_root(url)
+        if not crawl_root or not self._crawl_allowed(url, crawl_root):
             return []
         try:
             resp = safe_get(
@@ -165,7 +172,9 @@ class DomainCrawler:
                 url,
                 policy=self.url_policy,
                 timeout=30,
-                authorize=self._allowed,
+                authorize=lambda candidate: self._crawl_allowed(
+                    candidate, crawl_root
+                ),
             )
             resp.raise_for_status()
         except requests.RequestException:
@@ -192,7 +201,11 @@ class DomainCrawler:
                         loc_el = child
                         break
                 if loc_el is not None and loc_el.text:
-                    urls.extend(self._parse_sitemap(loc_el.text.strip(), _depth + 1))
+                    urls.extend(
+                        self._parse_sitemap(
+                            loc_el.text.strip(), _depth + 1, root=crawl_root
+                        )
+                    )
         elif root_tag == "urlset":
             for url_el in root:
                 tag = _strip_ns(url_el.tag)
@@ -220,13 +233,6 @@ class DomainCrawler:
 
         Sleeps 0.5 s between fetches.  Returns a list of discovered URLs.
         """
-        # Create a temporary PulseEngine just for link extraction.
-        # We don't need a real DB here — we only call _extract_links.
-        pulse = PulseEngine(
-            db=self.db,
-            session=self.session,
-            resolver=self.url_policy.resolver,
-        )
         root_norm = root.rstrip("/")
 
         visited: set[str] = set()
@@ -248,7 +254,9 @@ class DomainCrawler:
                     current,
                     policy=self.url_policy,
                     timeout=30,
-                    authorize=self._allowed,
+                    authorize=lambda candidate: self._crawl_allowed(
+                        candidate, root_norm
+                    ),
                 )
                 resp.raise_for_status()
             except requests.RequestException:
@@ -257,7 +265,7 @@ class DomainCrawler:
             discovered.append(current)
 
             html = resp.text
-            links = pulse._extract_links(html, current)
+            links = PulseEngine._extract_links(html, current)
 
             for link in links:
                 # Strip URL fragments to avoid duplicate entries
@@ -325,7 +333,7 @@ class DomainCrawler:
 
         if sitemaps:
             for sm in sitemaps:
-                urls_to_fetch.extend(self._parse_sitemap(sm))
+                urls_to_fetch.extend(self._parse_sitemap(sm, root=root))
                 if len(urls_to_fetch) >= max_pages:
                     urls_to_fetch = urls_to_fetch[:max_pages]
                     break
@@ -360,7 +368,7 @@ class DomainCrawler:
                     page_url,
                     policy=self.url_policy,
                     timeout=30,
-                    authorize=self._allowed,
+                    authorize=lambda candidate: self._crawl_allowed(candidate, root),
                 )
                 resp.raise_for_status()
             except requests.RequestException:

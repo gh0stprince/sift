@@ -22,6 +22,7 @@ def test_setup_declares_all_runtime_dependencies(monkeypatch) -> None:
     assert "ddgs>=9.0.0" in requirements
     assert "python-dotenv>=1.0.0" in requirements
     assert "lxml_html_clean>=0.4.0" in requirements
+    assert "requests>=2.32.3" in requirements
     assert not any(item.startswith("duckduckgo_search") for item in requirements)
     assert captured["python_requires"] == ">=3.10"
 

@@ -1,6 +1,7 @@
 import os
 import tempfile
 import importlib.util
+import sqlite3
 
 from pathlib import Path
 
@@ -146,6 +147,58 @@ def test_add_source_is_idempotent_by_normalized_url_and_kind(db):
     ).fetchall()
     assert [row["kind"] for row in rows] == ["feed", "crawl"]
     assert rows[0]["feed_url"] == "https://example.com/feed"
+
+
+def test_legacy_source_migration_normalizes_deduplicates_and_repoints_pages(tmp_path):
+    """Equivalent legacy source URLs collapse without breaking page ownership."""
+    path = tmp_path / "legacy.db"
+    connection = sqlite3.connect(path)
+    connection.executescript("""
+        PRAGMA foreign_keys=ON;
+        CREATE TABLE sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            feed_url TEXT NOT NULL UNIQUE,
+            kind TEXT NOT NULL DEFAULT 'feed',
+            added_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE pages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL UNIQUE,
+            title TEXT,
+            content TEXT,
+            source_id INTEGER REFERENCES sources(id) ON DELETE SET NULL,
+            fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+            pulse_id INTEGER,
+            link_depth INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO sources (id, name, feed_url, kind)
+            VALUES (1, 'First', 'HTTPS://Example.COM:443/feed#x', 'feed');
+        INSERT INTO sources (id, name, feed_url, kind)
+            VALUES (2, 'Second', 'https://example.com/feed', 'feed');
+        INSERT INTO pages (url, title, content, source_id)
+            VALUES ('https://example.com/post', 'Post', 'body', 2);
+    """)
+    connection.commit()
+    connection.close()
+
+    database = DB(path)
+    try:
+        sources = database.conn.execute(
+            "SELECT id, feed_url, kind FROM sources ORDER BY id"
+        ).fetchall()
+        page = database.conn.execute(
+            "SELECT source_id FROM pages WHERE url = 'https://example.com/post'"
+        ).fetchone()
+        assert [(row["id"], row["feed_url"], row["kind"]) for row in sources] == [
+            (1, "https://example.com/feed", "feed")
+        ]
+        assert page["source_id"] == 1
+        assert database.add_source(
+            "Again", "https://example.com/feed", kind="feed"
+        ) == 1
+    finally:
+        database.close()
 
 
 def test_get_sources_and_stats_keep_feed_and_crawl_semantics_separate(db):

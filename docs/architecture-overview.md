@@ -91,9 +91,9 @@ User Query
     ↓ (if no results)
 [PulseEngine] → DDG search with query variations → Rank by frequency
     ↓
-Fetch top 15 pages → trafilatura extraction → Store in pages table
+Fetch a bounded seed frontier → trafilatura extraction → Store in pages table
     ↓
-[depth=2] Extract links from top 5 pages → Fetch depth-1 links
+[depth=1..3] Follow links recursively within the global page budget
     ↓
 Build context from results (title + URL + excerpt)
     ↓
@@ -149,7 +149,7 @@ Sift is a single-process CLI application with no network services. All boundarie
 **Shared Infrastructure:**
 - **SQLite Database:** `~/.sift/sift.db` — shared by all commands
 - **FTS5 Virtual Table:** `pages_fts` — updated via triggers on pages table
-- **HTTP Session:** `requests.Session` with shared User-Agent and headers
+- **HTTP Session:** `PinnedSession` with shared headers and validated-IP connections
 - **API Keys:** Environment variables or `.env` file (resolved at import time)
 
 ## 6. Key Design Decisions
@@ -164,7 +164,7 @@ Sift is a single-process CLI application with no network services. All boundarie
 
 - **Frequency-based URL ranking** — URLs appearing in multiple variation results are ranked higher. Evidence: `sift/pulse.py` lines 257-276.
 
-- **Depth-limited crawling** — Pulse fetches 15 pages at depth 0, then follows links from top 5 to depth 1. Evidence: `sift/pulse.py` lines 278-309.
+- **Depth-limited crawling** — Pulse supports depths 0–3, reserves budget for requested link levels, deduplicates URLs, and bounds all fetch attempts by one global page budget. Evidence: `sift/pulse.py`.
 
 - **Streaming LLM responses** — `synthesize_stream()` yields tokens as they arrive via SSE, providing UX responsiveness. Evidence: `sift/synthesize.py` lines 158-244.
 

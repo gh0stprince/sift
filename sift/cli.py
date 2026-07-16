@@ -96,7 +96,12 @@ def search(ctx, query, limit, fresh):
 
 @main.command()
 @click.argument("query")
-@click.option("--depth", default=2, type=click.IntRange(min=0), help="Link-following depth")
+@click.option(
+    "--depth",
+    default=2,
+    type=click.IntRange(0, 3),
+    help="Link-following depth",
+)
 @click.option("--max-pages", default=30, type=click.IntRange(min=1), help="Max pages to fetch")
 @click.pass_context
 def pulse(ctx, query, depth, max_pages):

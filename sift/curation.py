@@ -118,11 +118,21 @@ def read_capture(path: Path) -> RawCapture:
     raw = path.read_bytes()
     text = raw.decode("utf-8")
     metadata, body = _parse_frontmatter(text)
+    if metadata.get("source_queries"):
+        metadata["source_query"] = metadata["source_queries"]
     metadata.setdefault(
         "source_urls",
         list(dict.fromkeys(re.findall(r"https?://[^\s\)\]>\"']+", text))),
     )
     return RawCapture(path, metadata, body, hashlib.sha256(raw).hexdigest())
+
+
+def _query_display(metadata: dict[str, Any]) -> str:
+    """Render scalar or accumulated query provenance without Python reprs."""
+    value = metadata.get("source_query", "")
+    values = value if isinstance(value, list) else [value]
+    rendered = "; ".join(str(item).strip() for item in values if str(item).strip())
+    return rendered or "incomplete: source_query missing"
 
 
 def _yaml_string(value: str) -> str:
@@ -141,8 +151,7 @@ def _provenance_lines(capture: RawCapture, vault: Path) -> list[str]:
         raw_path = capture.path.resolve().relative_to(vault.resolve()).as_posix()
     except ValueError:
         raw_path = capture.path.resolve().as_posix()
-    source_query = str(capture.metadata.get("source_query", "")).strip()
-    query_display = source_query or "incomplete: source_query missing"
+    query_display = _query_display(capture.metadata)
     source_urls = capture.metadata.get("source_urls", []) or [
         capture.metadata.get("source_url", "")
     ]
@@ -230,8 +239,7 @@ def _page_content(result: dict[str, Any], capture: RawCapture, links: list[str],
     lines += ["workflow: curated", "confidence: medium", "sources:"]
     source_urls = capture.metadata.get("source_urls", []) or [capture.metadata.get("source_url", "")]
     source_urls = [str(url) for url in source_urls if str(url).strip()]
-    source_query = str(capture.metadata.get("source_query", "")).strip()
-    query_display = source_query or "incomplete: source_query missing"
+    query_display = _query_display(capture.metadata)
     for url in source_urls:
         lines += [f"  - url: {_yaml_string(url)}",
                   f"    query: {_yaml_string(query_display)}",
