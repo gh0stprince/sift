@@ -78,6 +78,7 @@ class RobotsPolicy:
                 policy=self.url_policy,
                 timeout=15,
                 headers={"User-Agent": self.user_agent},
+                authorize=lambda candidate: self.origin(candidate) == origin,
             )
             response.raise_for_status()
             lines = response.text.splitlines()

@@ -160,3 +160,75 @@ def test_repeat_crawl_reuses_real_database_source(monkeypatch, tmp_path) -> None
         database.close()
 
     assert second["source_id"] == first["source_id"]
+
+
+class _BoundaryResponse:
+    def __init__(self, *, text="", content=b"", status_code=200, location=None):
+        self.text = text
+        self.content = content
+        self.status_code = status_code
+        self.headers = {"Location": location} if location else {}
+
+    def raise_for_status(self):
+        """All configured boundary responses are non-error HTTP responses."""
+
+    def close(self):
+        """Match the response cleanup contract."""
+
+
+class _BoundarySession:
+    def __init__(self, responses):
+        self.responses = iter(responses)
+        self.calls = []
+        self.headers = {}
+
+    def get(self, url, **_kwargs):
+        self.calls.append(url)
+        return next(self.responses)
+
+    def close(self):
+        """Match the session cleanup contract."""
+
+
+def test_crawl_redirect_cannot_leave_root_host() -> None:
+    session = _BoundarySession([
+        _BoundaryResponse(text="User-agent: *\nAllow: /\n"),
+        _BoundaryResponse(
+            status_code=302,
+            location="https://other.example/private-boundary",
+        ),
+    ])
+    crawler = DomainCrawler(
+        FakeDB(),
+        session=session,
+        resolver=lambda _host: ["93.184.216.34"],
+    )
+
+    assert not crawler._crawl_from_root("https://example.com", max_pages=1)
+    assert session.calls == [
+        "https://example.com/robots.txt",
+        "https://example.com",
+    ]
+
+
+def test_nested_sitemap_cannot_leave_root_host() -> None:
+    xml = b"""<?xml version='1.0'?>
+    <sitemapindex><sitemap><loc>https://other.example/map.xml</loc></sitemap></sitemapindex>
+    """
+    session = _BoundarySession([
+        _BoundaryResponse(text="User-agent: *\nAllow: /\n"),
+        _BoundaryResponse(content=xml),
+    ])
+    crawler = DomainCrawler(
+        FakeDB(),
+        session=session,
+        resolver=lambda _host: ["93.184.216.34"],
+    )
+
+    assert not crawler._parse_sitemap(
+        "https://example.com/index.xml", root="https://example.com"
+    )
+    assert session.calls == [
+        "https://example.com/robots.txt",
+        "https://example.com/index.xml",
+    ]

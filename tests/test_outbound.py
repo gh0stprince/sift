@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import pytest
 import requests
 
-from sift.outbound import OutboundPolicy, UnsafeURLError, safe_get
+from sift.outbound import OutboundPolicy, PinnedSession, UnsafeURLError, safe_get
 from sift.crawler import DomainCrawler
 from sift.feeds import FeedFetcher
 from sift.pulse import PulseEngine
@@ -45,6 +45,17 @@ class FakeSession:
 
     def close(self) -> None:
         """Match requests.Session cleanup."""
+
+
+class PinnedFakeSession:
+    """Transport double accepting only policy-approved connection addresses."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[str, ...]]] = []
+
+    def get_pinned(self, url: str, addresses: tuple[str, ...], **_kwargs):
+        self.calls.append((url, addresses))
+        return FakeResponse()
 
 
 @pytest.mark.parametrize(
@@ -118,6 +129,69 @@ def test_safe_get_validates_and_authorizes_every_public_redirect() -> None:
     ]
 
 
+def test_safe_get_pins_the_validated_dns_answer_against_rebinding() -> None:
+    resolutions = iter([
+        ["93.184.216.34"],
+        ["127.0.0.1"],
+    ])
+    policy = OutboundPolicy(resolver=lambda _host: next(resolutions))
+    session = PinnedFakeSession()
+
+    safe_get(session, "https://example.com/page", policy=policy, timeout=5)
+
+    assert session.calls == [
+        ("https://example.com/page", ("93.184.216.34",))
+    ]
+    assert next(resolutions) == ["127.0.0.1"]
+
+
+def test_pinned_session_connects_to_ip_with_original_host_and_tls_name(
+    monkeypatch,
+) -> None:
+    session = PinnedSession()
+    adapter = session.get_adapter("https://")
+    observed = {}
+
+    def fake_send(request, **kwargs):
+        host_params, pool_kwargs = adapter.build_connection_pool_key_attributes(
+            request, kwargs["verify"], kwargs.get("cert")
+        )
+        observed.update(
+            host=request.headers["Host"],
+            pool_host=host_params["host"],
+            assert_hostname=pool_kwargs["assert_hostname"],
+            server_hostname=pool_kwargs["server_hostname"],
+        )
+        response = requests.Response()
+        response.status_code = 200
+        response.url = request.url
+        response.request = request
+        return response
+
+    monkeypatch.setattr(adapter, "send", fake_send)
+
+    response = session.get_pinned(
+        "https://example.com/page", ("93.184.216.34",), timeout=5
+    )
+
+    assert response.status_code == 200
+    assert observed == {
+        "host": "example.com",
+        "pool_host": "93.184.216.34",
+        "assert_hostname": "example.com",
+        "server_hostname": "example.com",
+    }
+
+
+def test_safe_get_rejects_unpinned_requests_session() -> None:
+    policy = OutboundPolicy(resolver=lambda _host: ["93.184.216.34"])
+
+    with requests.Session() as session, pytest.raises(
+        UnsafeURLError, match="pinned DNS"
+    ):
+        safe_get(session, "https://example.com/page", policy=policy, timeout=5)
+
+
 def test_robots_fetch_uses_boundary_and_disables_redirects() -> None:
     response = FakeResponse(text="User-agent: *\nAllow: /\n")
     session = FakeSession([response])
@@ -129,6 +203,25 @@ def test_robots_fetch_uses_boundary_and_disables_redirects() -> None:
 
     assert policy.allowed("https://example.com/page")
     assert session.calls == [("https://example.com/robots.txt", False)]
+
+
+def test_robots_redirect_cannot_substitute_another_origins_policy() -> None:
+    redirect = FakeResponse(
+        302, {"Location": "https://other.example/robots.txt"}
+    )
+    session = FakeSession([redirect])
+    policy = RobotsPolicy(
+        session,
+        "Sift-Test/0.1",
+        url_policy=OutboundPolicy(resolver=lambda _host: ["93.184.216.34"]),
+    )
+
+    decision = policy.check("https://example.com/page")
+
+    assert not decision.allowed
+    assert decision.reason == "robots_unavailable"
+    assert session.calls == [("https://example.com/robots.txt", False)]
+    assert redirect.closed
 
 
 def test_feed_redirect_cannot_reach_private_service() -> None:
